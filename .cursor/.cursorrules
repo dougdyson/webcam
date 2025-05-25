@@ -71,7 +71,7 @@
 - Consider real-time monitoring dashboards for debugging and system status.
 - Plan for integration with home automation or security systems.
 
-# Service Layer Development (Current Focus)
+# Service Layer Development (Implemented)
 - **Start Simple**: Begin with HTTP API for speaker verification guard clause integration
 - **Event-Driven Architecture**: Use EventPublisher pattern for decoupled service communication
 - **Multiple Service Types**: Support WebSocket (8765), SSE (8766), and HTTP API (8767) simultaneously
@@ -121,7 +121,7 @@
   - `src/cli/` - Command-line interface with detector selection
   - `config/` - Configuration files
   - `docs/` - reference and samples
-  - `tests/` - Test files (264+ comprehensive tests)
+  - `tests/` - Test files (320+ comprehensive tests)
     - `test_integration/` - Integration test scenarios
   - `data/` - Sample data, logs, or temporary files
 - Prioritize modularity and clear separation of concerns.
@@ -147,7 +147,7 @@
 - Use pytest for testing and ensure test filenames are unique across the project.
 - Mock camera inputs for testing detection algorithms.
 - Test different lighting conditions and scenarios with sample images/videos.
-- **Comprehensive Testing**: Maintain 264+ tests covering all components and integration scenarios
+- **Comprehensive Testing**: Maintain 320+ tests covering all components and integration scenarios
 - **Test Categories**: Unit tests, integration tests, multi-modal detection tests, CLI tests
 - **Test Isolation**: Use proper mocking to avoid pytest interference with SystemExit and similar issues
 - **Factory Pattern Testing**: Test detector registration, creation, and type validation
