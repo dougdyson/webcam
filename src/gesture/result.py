@@ -75,6 +75,21 @@ class GestureResult:
             'timestamp': self.timestamp.isoformat()
         }
     
+    def to_service_event(self) -> 'ServiceEvent':
+        """
+        Convert GestureResult to ServiceEvent for event publishing.
+        
+        Returns:
+            ServiceEvent with GESTURE_DETECTED type and gesture data
+        """
+        from ..service.events import ServiceEvent, EventType
+        
+        return ServiceEvent(
+            event_type=EventType.GESTURE_DETECTED,
+            data=self.to_dict(),
+            timestamp=self.timestamp
+        )
+    
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'GestureResult':
         """Create GestureResult from dictionary."""

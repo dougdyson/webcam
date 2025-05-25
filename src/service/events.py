@@ -19,6 +19,11 @@ class EventType(Enum):
     CONFIDENCE_ALERT = "confidence_alert"
     SYSTEM_STATUS = "system_status"
     ERROR_OCCURRED = "error_occurred"
+    
+    # NEW: Gesture event types
+    GESTURE_DETECTED = "gesture_detected"
+    GESTURE_LOST = "gesture_lost"
+    GESTURE_CONFIDENCE_UPDATE = "gesture_confidence_update"
 
 
 class ServiceEventError(Exception):
@@ -50,6 +55,11 @@ class ServiceEvent:
         # Convert datetime to ISO string
         data['timestamp'] = self.timestamp.isoformat()
         return json.dumps(data)
+    
+    def to_sse_format(self) -> str:
+        """Format event for Server-Sent Events streaming."""
+        json_data = self.to_json()
+        return f"data: {json_data}\n\n"
     
     @classmethod
     def from_json(cls, json_str: str) -> 'ServiceEvent':
