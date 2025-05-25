@@ -6,7 +6,9 @@ and asynchronous processing capabilities.
 """
 
 from .queue import FrameQueue, FrameQueueError, FrameMetadata, QueuedFrame
+from .processor import FrameProcessor, FrameProcessorError, ProcessingResult
 
 __all__ = [
-    'FrameQueue', 'FrameQueueError', 'FrameMetadata', 'QueuedFrame'
+    'FrameQueue', 'FrameQueueError', 'FrameMetadata', 'QueuedFrame',
+    'FrameProcessor', 'FrameProcessorError', 'ProcessingResult'
 ] 

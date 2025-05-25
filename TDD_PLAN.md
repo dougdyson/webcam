@@ -95,43 +95,12 @@ def test_logger_manager_handles_missing_config():
 - ✅ Synchronous and threaded capture modes
 - ✅ Error handling and recovery mechanisms
 
-#### Cycle 2.4: Frame Queue
-- [ ] **Cycle 2.4 Complete**
-
-**RED**: Test thread-safe frame queue
-- [ ] Write failing tests for frame queue
-```python
-def test_frame_queue_basic_operations():
-    # Should support put/get operations
-    queue = FrameQueue(max_size=5)
-    frame = np.zeros((480, 640, 3))
-    
-    queue.put_frame(frame)
-    retrieved_frame = queue.get_frame()
-    assert np.array_equal(frame, retrieved_frame)
-
-def test_frame_queue_overflow_handling():
-    # Should handle queue overflow (drop oldest)
-    queue = FrameQueue(max_size=2)
-    frame1, frame2, frame3 = [np.ones((480, 640, 3)) * i for i in range(3)]
-    
-    queue.put_frame(frame1)
-    queue.put_frame(frame2)
-    queue.put_frame(frame3)  # Should drop frame1
-    
-    assert queue.size() == 2
-    assert not np.array_equal(queue.get_frame(), frame1)
-```
-
-**GREEN**: Implement FrameQueue
-- [ ] Create `src/processing/queue.py`
-- [ ] Use `queue.Queue` with size limits
-- [ ] Implement overflow handling
-- [ ] Verify tests pass
-
-**REFACTOR**: Add queue statistics and monitoring
-- [ ] Add queue statistics and monitoring
-- [ ] Ensure all tests still pass
+#### ✅ Cycle 2.4: Frame Queue
+- ✅ **Cycle 2.4 Complete** *(Implemented in Phase 3, Cycle 3.1 with advanced features)*
+- ✅ Thread-safe frame queue with put/get operations
+- ✅ Queue overflow handling (drop oldest strategy)
+- ✅ Frame metadata and statistics tracking
+- ✅ Performance monitoring and health checks
 
 #### Cycle 2.5: Async Frame Processor
 - [ ] **Cycle 2.5 Complete**
