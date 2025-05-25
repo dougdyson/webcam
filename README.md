@@ -330,10 +330,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Ready to add intelligent human presence detection to your application?**
-
-```bash
-pip install webcam-detection
-```
-
 *Built with ❤️ for developers who need reliable, local human detection.* 
