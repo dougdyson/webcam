@@ -4,8 +4,9 @@ include requirements.txt
 include environment.yml
 include ARCHITECTURE.md
 include TDD_PLAN.md
-include TDD_SERVICE_PLAN.md
+include TDD_PLAN_SERVICE_LAYER.md
 include MULTIMODAL_IMPLEMENTATION_SUMMARY.md
+include PUBLISHING_GUIDE.md
 
 # Configuration files
 recursive-include config *.yaml *.yml
