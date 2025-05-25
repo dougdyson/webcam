@@ -117,6 +117,162 @@ def should_process_audio() -> bool:
 #### Phase 13: Server-Sent Events (Future Enhancement)
 - [ ] Cycle 13.1: SSE Core Implementation
 
+### 🎯 NEW FEATURES IN DEVELOPMENT
+
+#### Phase 14: Gesture Recognition System
+*Goal: Implement "hand up at shoulder level with palm facing camera" detection*
+
+**[ ] Cycle 14.1: Gesture Detection Algorithm**
+- [ ] Test gesture specification: Hand up at shoulder level with palm facing camera
+- [ ] Test MediaPipe hands integration and landmark extraction
+- [ ] Test shoulder reference point calculation from existing pose data
+- [ ] Test palm orientation analysis (facing camera detection)
+- [ ] Test boundary conditions (hand below shoulder, palm not facing camera)
+- [ ] Test gesture confidence calculation
+- [ ] Estimated: 8-12 tests
+
+**[ ] Cycle 14.2: GestureDetector Implementation**
+- [ ] Test GestureDetector class creation following existing patterns
+- [ ] Test gesture detection initialization and cleanup
+- [ ] Test detect_gestures() method with GestureResult return
+- [ ] Test integration with MediaPipe hands solution
+- [ ] Test error handling for hand detection failures
+- [ ] Test resource management and MediaPipe context sharing
+- [ ] Estimated: 10-15 tests
+
+**[ ] Cycle 14.3: Gesture Result and Event Integration**
+- [ ] Test GestureResult dataclass creation (similar to DetectionResult)
+- [ ] Test new event types: GESTURE_DETECTED, GESTURE_LOST
+- [ ] Test gesture event data structure and serialization
+- [ ] Test integration with existing EventPublisher
+- [ ] Test gesture debouncing and smoothing (prevent false triggers)
+- [ ] Estimated: 8-10 tests
+
+#### Phase 15: SSE Service Implementation  
+*Goal: Real-time gesture event streaming via Server-Sent Events*
+
+**[ ] Cycle 15.1: SSE Service Core**
+- [ ] Test SSE endpoint creation on port 8766 (as planned in architecture)
+- [ ] Test Server-Sent Events streaming format and headers
+- [ ] Test multiple client connection management
+- [ ] Test client disconnection detection and cleanup
+- [ ] Test CORS support for web dashboard integration
+- [ ] Test heartbeat mechanism for connection health
+- [ ] Estimated: 12-15 tests
+
+**[ ] Cycle 15.2: SSE Event Filtering and Integration**
+- [ ] Test gesture-specific event filtering (only gesture events via SSE)
+- [ ] Test real-time event streaming when gestures detected
+- [ ] Test EventPublisher subscription for SSE service
+- [ ] Test event queue management for multiple clients
+- [ ] Test performance: multiple clients receiving simultaneous events
+- [ ] Test error isolation: SSE failures don't affect core detection
+- [ ] Estimated: 10-12 tests
+
+**[ ] Cycle 15.3: SSE Service Configuration and Health**
+- [ ] Test SSE service configuration (SSEServiceConfig)
+- [ ] Test service health endpoints (/health)
+- [ ] Test service startup and graceful shutdown
+- [ ] Test integration with existing service patterns
+- [ ] Test logging and monitoring capabilities
+- [ ] Estimated: 6-8 tests
+
+#### Phase 16: Gesture + SSE Pipeline Integration
+*Goal: Complete human presence → gesture detection → SSE streaming workflow*
+
+**[ ] Cycle 16.1: Conditional Gesture Detection**
+- [ ] Test gesture detection only runs when human is present (performance optimization)
+- [ ] Test integration with existing MultiModalDetector presence results
+- [ ] Test gesture detection skipped when confidence below threshold
+- [ ] Test seamless integration with existing frame processing pipeline
+- [ ] Test resource sharing between pose and gesture detection
+- [ ] Test performance impact measurement
+- [ ] Estimated: 8-10 tests
+
+**[ ] Cycle 16.2: End-to-End Gesture → SSE Flow**
+- [ ] Test complete pipeline: Camera → Presence → Gesture → SSE Event
+- [ ] Test real-time gesture detection with immediate SSE streaming
+- [ ] Test multiple gesture events handled correctly
+- [ ] Test gesture lost events when hand goes down
+- [ ] Test client receives events in correct format
+- [ ] Test performance: gesture detection → SSE streaming latency
+- [ ] Estimated: 10-12 tests
+
+**[ ] Cycle 16.3: Production Integration and Performance**
+- [ ] Test integration with existing webcam_http_service.py
+- [ ] Test simultaneous HTTP API + SSE service operation
+- [ ] Test performance with both presence detection and gesture detection
+- [ ] Test error handling and graceful degradation
+- [ ] Test configuration management for gesture + SSE features
+- [ ] Test memory usage and resource management
+- [ ] Estimated: 8-10 tests
+
+### 📊 Enhanced Test Progression Tracking
+
+#### Current Status: 320 tests ✅
+- **Core Detection System** (Phases 1-6): 264 tests ✅
+- **Service Layer** (Phases 9-10): +56 tests (320 total) ✅
+
+#### Gesture Recognition Targets (Phases 14-16):
+- **Phase 14 Complete**: +28-37 tests (348-357 total)
+- **Phase 15 Complete**: +28-35 tests (376-392 total)  
+- **Phase 16 Complete**: +26-32 tests (402-424 total)
+- **🎯 Final Target**: **~420 comprehensive tests**
+
+### 🏗️ Enhanced Architecture Integration
+
+#### New Components Structure:
+```
+src/
+├── detection/
+│   └── gesture_detector.py      # NEW: Hand gesture detection
+├── gesture/                     # NEW: Gesture-specific logic
+│   ├── __init__.py
+│   ├── hand_detection.py        # MediaPipe hands integration
+│   ├── classification.py       # "Hand up" algorithm
+│   └── result.py               # GestureResult dataclass
+├── service/
+│   └── sse_service.py          # NEW: Server-Sent Events (port 8766)
+└── ...existing structure
+```
+
+#### New Test Structure:
+```
+tests/
+├── test_gesture/               # NEW: Gesture detection tests
+│   ├── test_hand_detection.py  # MediaPipe hands tests
+│   ├── test_classification.py  # Hand up algorithm tests
+│   ├── test_gesture_detector.py # Main detector tests
+│   └── test_gesture_result.py  # Result format tests
+├── test_service/
+│   └── test_sse_service.py     # NEW: SSE service tests
+└── test_integration/
+    └── test_gesture_sse_integration.py # NEW: End-to-end tests
+```
+
+### 🎯 Success Criteria for Gesture + SSE Features
+
+#### Gesture Detection:
+- [ ] Hand up at shoulder level accurately detected (>90% accuracy)
+- [ ] Palm facing camera correctly identified
+- [ ] Gesture detection only runs when human present (performance)
+- [ ] Smooth gesture transitions (debouncing works)
+- [ ] Resource usage acceptable (<20% additional CPU)
+
+#### SSE Service:
+- [ ] Real-time gesture events streamed to clients (<100ms latency)
+- [ ] Multiple clients supported simultaneously (10+ clients)
+- [ ] Connection management robust (auto-cleanup, heartbeat)
+- [ ] CORS enabled for web dashboard integration
+- [ ] Service fails gracefully without affecting core detection
+
+#### Integration:
+- [ ] End-to-end pipeline works: Camera → Presence → Gesture → SSE
+- [ ] Performance targets met (gesture detection + streaming)
+- [ ] All tests pass (target: ~420 comprehensive tests)
+- [ ] Documentation updated
+- [ ] Production deployment ready
+
 ## Test Progression History
 
 ### Core System Development (Phases 1-6)

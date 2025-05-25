@@ -8,3 +8,76 @@ python-dotenv==1.1.0
 # Testing dependencies
 pytest==8.3.5
 pytest-asyncio==0.26.0
+
+# ============================================================================
+# GESTURE RECOGNITION DEPENDENCIES
+# ============================================================================
+
+# MediaPipe Hands for gesture detection
+# Note: mediapipe already included above, but ensure compatible version
+mediapipe>=0.10.8
+
+# Enhanced hand/gesture analysis
+# numpy already included above for numerical operations
+
+# ============================================================================
+# SERVER-SENT EVENTS (SSE) DEPENDENCIES  
+# ============================================================================
+
+# FastAPI SSE support
+sse-starlette>=1.8.2
+
+# Enhanced HTTP client for SSE testing
+httpx>=0.25.0
+
+# Async support enhancements
+# asyncio is built-in, but we may need aiofiles for advanced async file operations
+aiofiles>=23.2.0
+
+# ============================================================================
+# ADDITIONAL DEVELOPMENT DEPENDENCIES
+# ============================================================================
+
+# Enhanced testing for async operations
+pytest-asyncio>=0.21.1
+
+# Mock HTTP server for testing SSE
+respx>=0.20.2
+
+# Performance testing and benchmarking
+pytest-benchmark>=4.0.0
+
+# Memory profiling for gesture detection optimization
+memory-profiler>=0.61.0
+
+# ============================================================================
+# OPTIONAL PRODUCTION DEPENDENCIES
+# ============================================================================
+
+# Production ASGI server (alternative to uvicorn)
+gunicorn>=21.2.0
+
+# Process management for multi-service deployment
+supervisor>=4.2.5
+
+# Health monitoring
+psutil>=5.9.6
+
+# Configuration validation
+pydantic-settings>=2.1.0
+
+# Structured logging for production
+structlog>=23.2.0
+
+# ============================================================================
+# WEB DASHBOARD DEPENDENCIES (OPTIONAL)
+# ============================================================================
+
+# Static file serving for gesture testing UI
+# fastapi already includes static file support
+
+# Template engine for debug/testing interfaces
+jinja2>=3.1.2
+
+# Web assets management
+webassets>=2.0

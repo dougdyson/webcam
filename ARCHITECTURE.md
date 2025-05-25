@@ -32,7 +32,7 @@ Video Capture → Frame Queue → Multi-Modal Detection → Presence Decision �
 Detection Pipeline → EventPublisher → Service Layer
                                     ├── HTTP API Service (8767) ✅ IMPLEMENTED
                                     ├── WebSocket Service (8765) - Future
-                                    └── SSE Service (8766) - Future
+                                    └── SSE Service (8766) - PLANNED (Gesture Events)
 ```
 
 ### Core Components
@@ -528,3 +528,311 @@ def setup_speaker_verification_integration():
 - Core component identification
 - Technology stack selection
 - Directory structure planning 
+
+### Enhanced Detection Pipeline (NEW - Gesture Recognition)
+```
+Video Capture → Frame Queue → Multi-Modal Detection → Presence Decision → Gesture Detection → Service Layer
+     ↓              ↓              ↓                     ↓                    ↓                ↓
+   Thread        Async Queue    MediaPipe            Debounce           MediaPipe         EventPublisher
+                               (Pose + Face)         Filtering         (Hands + Pose)    ├── HTTP API (8767)
+                                                                       [if human]        └── SSE Events (8766)
+``` 
+
+## Gesture Recognition System Architecture ✨ NEW FEATURE
+
+### Overview
+The gesture recognition system extends the existing multi-modal detection with hand gesture analysis, specifically targeting "hand up at shoulder level with palm facing camera" detection. This feature integrates seamlessly with the existing pipeline and provides real-time gesture events via Server-Sent Events (SSE).
+
+### Key Design Decisions
+- **Performance First**: Gesture detection only runs when human presence is confirmed
+- **Accuracy Over Speed**: Optimized for correct gesture classification vs raw speed
+- **Real-time Streaming**: SSE service for immediate gesture event distribution
+- **Reuse Existing Infrastructure**: Leverages EventPublisher and service patterns
+
+### Gesture Detection Specification
+
+#### "Hand Up" Definition
+```
+Gesture: Hand up at shoulder level with palm facing camera
+Criteria:
+1. Hand landmark detected above shoulder level (Y-coordinate comparison)
+2. Palm orientation facing camera (normal vector analysis)
+3. Minimum confidence threshold (configurable, default: 0.7)
+4. Debouncing: Gesture must be stable for 3+ consecutive frames
+```
+
+#### Technical Implementation
+```python
+# Gesture detection algorithm outline
+def detect_hand_up_gesture(hand_landmarks, pose_landmarks) -> bool:
+    # 1. Get shoulder reference point from pose landmarks
+    shoulder_y = get_shoulder_reference(pose_landmarks)
+    
+    # 2. Check if hand is above shoulder level
+    hand_y = get_hand_center_y(hand_landmarks)
+    if hand_y >= shoulder_y:  # Y increases downward in image coordinates
+        return False
+    
+    # 3. Analyze palm orientation (facing camera)
+    palm_normal = calculate_palm_normal(hand_landmarks)
+    if is_palm_facing_camera(palm_normal):
+        return True
+    
+    return False
+```
+
+### Component Architecture
+
+#### 1. Gesture Module (`src/gesture/`)
+**New module for gesture-specific logic**
+
+- **`hand_detection.py`**: MediaPipe hands integration and landmark processing
+- **`classification.py`**: Gesture classification algorithms ("hand up" analysis)
+- **`result.py`**: GestureResult dataclass with standardized output format
+- **`config.py`**: Gesture detection configuration and thresholds
+
+#### 2. Enhanced Detection Module (`src/detection/`)
+**Extended to include gesture capabilities**
+
+- **`gesture_detector.py`**: Main GestureDetector class following existing patterns
+- **Integration**: Works alongside MultiModalDetector for combined detection
+
+#### 3. Enhanced Service Module (`src/service/`)
+**Extended with SSE service for real-time gesture streaming**
+
+- **`sse_service.py`**: Server-Sent Events service on port 8766
+- **Enhanced EventPublisher**: New event types for gesture detection
+
+### Gesture Detection Pipeline
+
+#### Processing Flow
+```
+1. Frame Capture (existing)
+   ↓
+2. Multi-Modal Detection (existing)
+   ↓ 
+3. Human Presence Check (existing)
+   ↓
+4. [IF HUMAN PRESENT] Gesture Detection (NEW)
+   ├── MediaPipe Hands Processing
+   ├── Shoulder Reference from Pose Data
+   ├── Hand Position Analysis
+   ├── Palm Orientation Check
+   └── Gesture Classification
+   ↓
+5. Gesture Events (NEW)
+   ├── GESTURE_DETECTED
+   ├── GESTURE_LOST
+   └── GESTURE_CONFIDENCE_UPDATE
+   ↓
+6. SSE Event Streaming (NEW)
+```
+
+#### Performance Optimization
+- **Conditional Processing**: Gesture detection only when human present (saves ~50% CPU)
+- **Resource Sharing**: Reuses pose landmarks for shoulder reference
+- **Efficient MediaPipe**: Shared context when possible, proper cleanup
+- **Smart Debouncing**: Prevents false positive gesture triggers
+
+### SSE Service Architecture
+
+#### Server-Sent Events (Port 8766)
+**Real-time gesture event streaming for web applications**
+
+```python
+# SSE endpoint structure
+GET /events/gestures/{client_id}
+→ Content-Type: text/event-stream
+→ Cache-Control: no-cache
+→ Connection: keep-alive
+
+# Event format
+data: {
+  "event_type": "gesture_detected",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "data": {
+    "gesture_type": "hand_up",
+    "confidence": 0.85,
+    "hand": "right",
+    "duration_ms": 1250
+  }
+}
+```
+
+#### SSE Service Features
+- **Multiple Clients**: Support 10+ simultaneous connections
+- **Connection Management**: Automatic client cleanup on disconnect
+- **Heartbeat**: 30-second ping to maintain connections
+- **CORS Enabled**: Ready for web dashboard integration
+- **Error Isolation**: SSE failures don't affect core detection
+
+### Event System Enhancement
+
+#### New Event Types
+```python
+class EventType(Enum):
+    # Existing events...
+    PRESENCE_CHANGED = "presence_changed"
+    DETECTION_UPDATE = "detection_update"
+    
+    # NEW: Gesture events
+    GESTURE_DETECTED = "gesture_detected"
+    GESTURE_LOST = "gesture_lost"
+    GESTURE_CONFIDENCE_UPDATE = "gesture_confidence_update"
+```
+
+#### Event Data Structure
+```python
+# Gesture detection event
+{
+    "event_type": "gesture_detected",
+    "timestamp": "2024-01-15T10:30:00Z",
+    "data": {
+        "gesture_type": "hand_up",
+        "confidence": 0.85,
+        "hand": "right",  # "left", "right", or "both"
+        "position": {
+            "hand_x": 0.65,
+            "hand_y": 0.25,
+            "shoulder_reference_y": 0.45
+        },
+        "palm_facing_camera": True,
+        "duration_ms": 1250
+    },
+    "source": "webcam_detection",
+    "event_id": "gesture_123"
+}
+```
+
+### Integration Patterns
+
+#### Human Presence → Gesture Detection
+```python
+class EnhancedFrameProcessor:
+    def process_frame(self, frame):
+        # 1. Multi-modal detection (existing)
+        presence_result = self.multimodal_detector.detect(frame)
+        
+        # 2. Conditional gesture detection (NEW)
+        gesture_result = None
+        if presence_result.human_present and presence_result.confidence > 0.6:
+            gesture_result = self.gesture_detector.detect_gestures(
+                frame, pose_landmarks=presence_result.landmarks
+            )
+        
+        # 3. Event publishing (enhanced)
+        if gesture_result and gesture_result.gesture_detected:
+            self.event_publisher.publish(ServiceEvent(
+                event_type=EventType.GESTURE_DETECTED,
+                data=gesture_result.to_dict()
+            ))
+```
+
+#### SSE Service Integration
+```python
+class SSEDetectionService:
+    def __init__(self):
+        self.gesture_event_queue = asyncio.Queue()
+        
+    def setup_gesture_integration(self, event_publisher):
+        # Subscribe only to gesture events
+        event_publisher.subscribe_async(self._handle_gesture_event)
+    
+    async def _handle_gesture_event(self, event):
+        if event.event_type in [EventType.GESTURE_DETECTED, EventType.GESTURE_LOST]:
+            await self.broadcast_to_all_clients(event)
+```
+
+### Performance Specifications
+
+#### Gesture Detection Performance
+- **Initialization**: <2s additional for MediaPipe hands setup
+- **Processing**: <50ms per frame for gesture analysis
+- **CPU Impact**: <20% additional when gesture detection active
+- **Memory**: <50MB additional for hand detection models
+
+#### SSE Service Performance  
+- **Event Latency**: <100ms from gesture detection to SSE client delivery
+- **Client Capacity**: 10+ simultaneous SSE connections
+- **Connection Overhead**: <5MB per connected client
+- **Heartbeat**: 30s interval with graceful timeout handling
+
+### Configuration Management
+
+#### Gesture Detection Config
+```yaml
+# config/gesture_config.yaml
+gesture_detection:
+  enabled: true
+  run_only_when_human_present: true
+  min_human_confidence_threshold: 0.6
+  
+  hand_detection:
+    model_complexity: 1
+    min_detection_confidence: 0.7
+    min_tracking_confidence: 0.5
+    max_num_hands: 2
+  
+  hand_up_gesture:
+    shoulder_offset_threshold: 0.1  # Hand must be 10% above shoulder
+    palm_facing_confidence: 0.7
+    debounce_frames: 3
+    gesture_timeout_ms: 5000
+```
+
+#### SSE Service Config
+```yaml
+# config/sse_config.yaml  
+sse_service:
+  enabled: true
+  host: "localhost"
+  port: 8766
+  max_connections: 20
+  heartbeat_interval: 30.0
+  connection_timeout: 60.0
+  
+  event_filtering:
+    gesture_events_only: true
+    include_confidence_updates: false
+    min_gesture_confidence: 0.6
+```
+
+### Directory Structure Updates
+
+#### New Components
+```
+src/
+├── gesture/                     # NEW: Gesture detection module
+│   ├── __init__.py
+│   ├── hand_detection.py        # MediaPipe hands integration
+│   ├── classification.py       # Hand up gesture algorithm
+│   ├── result.py               # GestureResult dataclass  
+│   └── config.py               # Gesture configuration
+├── detection/
+│   ├── gesture_detector.py      # NEW: Main gesture detector
+│   └── ...existing files
+├── service/
+│   ├── sse_service.py          # NEW: Server-Sent Events service
+│   └── ...existing files
+└── ...existing structure
+
+config/
+├── gesture_config.yaml          # NEW: Gesture detection settings
+├── sse_config.yaml             # NEW: SSE service settings
+└── ...existing configs
+
+tests/
+├── test_gesture/               # NEW: Gesture detection tests
+│   ├── test_hand_detection.py
+│   ├── test_classification.py
+│   ├── test_gesture_detector.py
+│   └── test_gesture_result.py
+├── test_service/
+│   ├── test_sse_service.py     # NEW: SSE service tests
+│   └── ...existing tests
+└── test_integration/
+    ├── test_gesture_sse_integration.py # NEW: End-to-end tests
+    └── ...existing tests
+```
+
+--- 

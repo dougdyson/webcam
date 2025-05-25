@@ -488,16 +488,369 @@ def performance_optimization():
     detector.stop_processing()
 
 
+# ============================================================================
+# GESTURE RECOGNITION SAMPLES - MediaPipe Hands
+# ============================================================================
+
+def hands_detection_basic():
+    """Basic hands detection using MediaPipe Hands."""
+    
+    mp_hands = mp.solutions.hands
+    mp_drawing = mp.solutions.drawing_utils
+    
+    # Configure hands detection
+    hands = mp_hands.Hands(
+        static_image_mode=False,
+        max_num_hands=2,
+        model_complexity=1,
+        min_detection_confidence=0.7,
+        min_tracking_confidence=0.5
+    )
+    
+    cap = cv2.VideoCapture(0)
+    
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        # Convert BGR to RGB for MediaPipe
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        
+        # Process the frame for hands
+        results = hands.process(rgb_frame)
+        
+        # Draw hand landmarks
+        if results.multi_hand_landmarks:
+            for hand_landmarks in results.multi_hand_landmarks:
+                mp_drawing.draw_landmarks(
+                    frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            
+            print(f"Detected {len(results.multi_hand_landmarks)} hands")
+        else:
+            print("No hands detected")
+        
+        cv2.imshow('MediaPipe Hands', frame)
+        
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+    
+    cap.release()
+    cv2.destroyAllWindows()
+    hands.close()
+
+
+def gesture_classification_sample():
+    """Sample code for hand gesture classification."""
+    
+    def calculate_palm_normal(hand_landmarks) -> np.ndarray:
+        """Calculate palm normal vector to determine orientation."""
+        # Get key palm landmarks (wrist, middle finger MCP, pinky MCP)
+        wrist = hand_landmarks.landmark[0]  # WRIST
+        middle_mcp = hand_landmarks.landmark[9]  # MIDDLE_FINGER_MCP
+        pinky_mcp = hand_landmarks.landmark[17]  # PINKY_MCP
+        
+        # Convert to numpy arrays
+        p1 = np.array([wrist.x, wrist.y, wrist.z])
+        p2 = np.array([middle_mcp.x, middle_mcp.y, middle_mcp.z])
+        p3 = np.array([pinky_mcp.x, pinky_mcp.y, pinky_mcp.z])
+        
+        # Calculate normal vector using cross product
+        v1 = p2 - p1
+        v2 = p3 - p1
+        normal = np.cross(v1, v2)
+        
+        # Normalize
+        if np.linalg.norm(normal) > 0:
+            normal = normal / np.linalg.norm(normal)
+        
+        return normal
+    
+    def is_palm_facing_camera(palm_normal: np.ndarray, threshold: float = 0.5) -> bool:
+        """Check if palm is facing camera (positive Z direction)."""
+        # Camera looks down negative Z axis, so palm facing camera has positive Z normal
+        return palm_normal[2] > threshold
+    
+    def get_hand_center_y(hand_landmarks) -> float:
+        """Get vertical center of hand (normalized coordinates)."""
+        # Use middle finger MCP as hand center reference
+        return hand_landmarks.landmark[9].y  # MIDDLE_FINGER_MCP
+    
+    def detect_hand_up_gesture(hand_landmarks, shoulder_y: float, 
+                             palm_facing_threshold: float = 0.5) -> bool:
+        """
+        Detect "hand up" gesture.
+        
+        Args:
+            hand_landmarks: MediaPipe hand landmarks
+            shoulder_y: Y coordinate of shoulder reference point
+            palm_facing_threshold: Minimum Z component for palm facing camera
+        
+        Returns:
+            True if hand up gesture detected
+        """
+        # 1. Check if hand is above shoulder level
+        hand_y = get_hand_center_y(hand_landmarks)
+        if hand_y >= shoulder_y:  # Y increases downward in image coordinates
+            return False
+        
+        # 2. Check if palm is facing camera
+        palm_normal = calculate_palm_normal(hand_landmarks)
+        if not is_palm_facing_camera(palm_normal, palm_facing_threshold):
+            return False
+        
+        return True
+    
+    # Sample usage in detection loop
+    mp_hands = mp.solutions.hands
+    hands = mp_hands.Hands(
+        static_image_mode=False,
+        max_num_hands=2,
+        model_complexity=1,
+        min_detection_confidence=0.7,
+        min_tracking_confidence=0.5
+    )
+    
+    cap = cv2.VideoCapture(0)
+    
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = hands.process(rgb_frame)
+        
+        gesture_detected = False
+        
+        if results.multi_hand_landmarks:
+            # Assuming shoulder reference at 60% down the frame (placeholder)
+            shoulder_y = 0.6  # In real implementation, get from pose landmarks
+            
+            for hand_landmarks in results.multi_hand_landmarks:
+                if detect_hand_up_gesture(hand_landmarks, shoulder_y):
+                    gesture_detected = True
+                    
+                    # Draw landmarks with different color for gesture
+                    mp.solutions.drawing_utils.draw_landmarks(
+                        frame, hand_landmarks, mp_hands.HAND_CONNECTIONS,
+                        landmark_drawing_spec=mp.solutions.drawing_utils.DrawingSpec(
+                            color=(0, 255, 0), thickness=2, circle_radius=2),
+                        connection_drawing_spec=mp.solutions.drawing_utils.DrawingSpec(
+                            color=(0, 255, 0), thickness=2)
+                    )
+                else:
+                    # Normal hand landmarks
+                    mp.solutions.drawing_utils.draw_landmarks(
+                        frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+        
+        # Display gesture status
+        status = "HAND UP DETECTED" if gesture_detected else "No gesture"
+        color = (0, 255, 0) if gesture_detected else (0, 0, 255)
+        cv2.putText(frame, status, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+        
+        cv2.imshow('Gesture Detection', frame)
+        
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+    
+    cap.release()
+    cv2.destroyAllWindows()
+    hands.close()
+
+
+def pose_hands_integration_sample():
+    """Sample showing how to integrate pose and hands detection."""
+    
+    mp_pose = mp.solutions.pose
+    mp_hands = mp.solutions.hands
+    mp_drawing = mp.solutions.drawing_utils
+    
+    # Initialize both detectors
+    pose = mp_pose.Pose(
+        static_image_mode=False,
+        model_complexity=1,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5
+    )
+    
+    hands = mp_hands.Hands(
+        static_image_mode=False,
+        max_num_hands=2,
+        model_complexity=1,
+        min_detection_confidence=0.7,
+        min_tracking_confidence=0.5
+    )
+    
+    def get_shoulder_reference_y(pose_landmarks) -> Optional[float]:
+        """Get shoulder reference point from pose landmarks."""
+        if not pose_landmarks:
+            return None
+        
+        # Average of left and right shoulders
+        left_shoulder = pose_landmarks.landmark[mp_pose.PoseLandmark.LEFT_SHOULDER]
+        right_shoulder = pose_landmarks.landmark[mp_pose.PoseLandmark.RIGHT_SHOULDER]
+        
+        return (left_shoulder.y + right_shoulder.y) / 2.0
+    
+    cap = cv2.VideoCapture(0)
+    
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        
+        # Process frame for both pose and hands
+        pose_results = pose.process(rgb_frame)
+        hands_results = hands.process(rgb_frame)
+        
+        # Draw pose landmarks
+        if pose_results.pose_landmarks:
+            mp_drawing.draw_landmarks(
+                frame, pose_results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+        
+        # Gesture detection with pose reference
+        gesture_detected = False
+        if pose_results.pose_landmarks and hands_results.multi_hand_landmarks:
+            shoulder_y = get_shoulder_reference_y(pose_results.pose_landmarks)
+            
+            if shoulder_y is not None:
+                for hand_landmarks in hands_results.multi_hand_landmarks:
+                    hand_center_y = hand_landmarks.landmark[9].y  # Middle finger MCP
+                    
+                    # Simple gesture check: hand above shoulder
+                    if hand_center_y < shoulder_y:
+                        gesture_detected = True
+                        
+                        # Draw hand with gesture color
+                        mp_drawing.draw_landmarks(
+                            frame, hand_landmarks, mp_hands.HAND_CONNECTIONS,
+                            landmark_drawing_spec=mp.solutions.drawing_utils.DrawingSpec(
+                                color=(0, 255, 0), thickness=2, circle_radius=2)
+                        )
+                    else:
+                        # Normal hand drawing
+                        mp_drawing.draw_landmarks(
+                            frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+        
+        # Status display
+        if pose_results.pose_landmarks:
+            status = "GESTURE: Hand Up" if gesture_detected else "POSE: Detected"
+            color = (0, 255, 0) if gesture_detected else (255, 255, 0)
+        else:
+            status = "No person detected"
+            color = (0, 0, 255)
+        
+        cv2.putText(frame, status, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+        
+        cv2.imshow('Pose + Hands Integration', frame)
+        
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+    
+    cap.release()
+    cv2.destroyAllWindows()
+    pose.close()
+    hands.close()
+
+
+def hand_landmark_analysis():
+    """Detailed analysis of hand landmarks for gesture classification."""
+    
+    def print_hand_landmarks_info():
+        """Print information about MediaPipe hand landmarks."""
+        print("MediaPipe Hand Landmarks (21 points):")
+        print("0:  WRIST")
+        print("1-4:   THUMB (TIP, IP, PIP, CMC)")
+        print("5-8:   INDEX_FINGER (TIP, DIP, PIP, MCP)")
+        print("9-12:  MIDDLE_FINGER (TIP, DIP, PIP, MCP)")
+        print("13-16: RING_FINGER (TIP, DIP, PIP, MCP)")
+        print("17-20: PINKY (TIP, DIP, PIP, MCP)")
+        print("\nKey landmarks for gesture detection:")
+        print("- Wrist (0): Base reference point")
+        print("- Middle finger MCP (9): Hand center")
+        print("- Index finger TIP (8): Primary pointing")
+        print("- Thumb TIP (4): Opposition gestures")
+    
+    def analyze_hand_pose(hand_landmarks):
+        """Analyze hand pose and return detailed information."""
+        landmarks = hand_landmarks.landmark
+        
+        # Key points
+        wrist = landmarks[0]
+        thumb_tip = landmarks[4]
+        index_tip = landmarks[8]
+        middle_mcp = landmarks[9]
+        middle_tip = landmarks[12]
+        pinky_mcp = landmarks[17]
+        
+        analysis = {
+            'hand_center': (middle_mcp.x, middle_mcp.y),
+            'hand_span': abs(thumb_tip.x - pinky_mcp.x),
+            'vertical_extent': abs(wrist.y - middle_tip.y),
+            'fingers_extended': []
+        }
+        
+        # Simple finger extension detection
+        # Index finger: tip above PIP
+        if index_tip.y < landmarks[6].y:  # INDEX_FINGER_PIP
+            analysis['fingers_extended'].append('index')
+        
+        # Middle finger: tip above PIP  
+        if middle_tip.y < landmarks[10].y:  # MIDDLE_FINGER_PIP
+            analysis['fingers_extended'].append('middle')
+        
+        return analysis
+    
+    # Demo function usage
+    print_hand_landmarks_info()
+    print("\nUse this information for gesture classification!")
+
+
+# Example configuration for gesture detection
+def gesture_detection_config_sample():
+    """Sample configuration for gesture detection system."""
+    
+    config = {
+        'hand_detection': {
+            'static_image_mode': False,
+            'max_num_hands': 2,
+            'model_complexity': 1,
+            'min_detection_confidence': 0.7,
+            'min_tracking_confidence': 0.5
+        },
+        'gesture_classification': {
+            'hand_up': {
+                'shoulder_offset_threshold': 0.1,  # Hand must be 10% above shoulder
+                'palm_facing_confidence': 0.5,     # Z component of palm normal
+                'debounce_frames': 3,              # Stable for 3 frames
+                'timeout_ms': 5000                 # Max gesture duration
+            }
+        },
+        'performance': {
+            'run_only_when_human_present': True,
+            'min_human_confidence': 0.6,
+            'max_fps': 30
+        }
+    }
+    
+    return config
+
+
 if __name__ == "__main__":
-    print("MediaPipe Sample Code")
+    print("MediaPipe Samples - Choose a demo:")
     print("1. Basic pose detection")
-    print("2. Face detection")
+    print("2. Face detection") 
     print("3. Holistic detection")
     print("4. Pose landmark analysis")
-    print("5. Detection result class")
-    print("6. Performance optimization")
+    print("5. Basic hands detection")           # NEW
+    print("6. Gesture classification")         # NEW
+    print("7. Pose + hands integration")       # NEW
+    print("8. Hand landmark analysis")         # NEW
     
-    choice = input("Enter choice (1-6): ")
+    choice = input("Enter choice (1-8): ")
     
     if choice == "1":
         basic_pose_detection()
@@ -508,8 +861,12 @@ if __name__ == "__main__":
     elif choice == "4":
         pose_landmark_analysis()
     elif choice == "5":
-        detection_result_class()
+        hands_detection_basic()
     elif choice == "6":
-        performance_optimization()
+        gesture_classification_sample()
+    elif choice == "7":
+        pose_hands_integration_sample()
+    elif choice == "8":
+        hand_landmark_analysis()
     else:
         print("Invalid choice") 

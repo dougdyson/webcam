@@ -21,6 +21,30 @@ Webcam Detection provides a comprehensive, local-processing human presence detec
 - **🧪 Production Ready**: 320 comprehensive tests, battle-tested architecture
 - **⚙️ Configurable**: Extensive configuration options for different scenarios
 
+## ✨ Coming Soon: Gesture Recognition + Real-Time Streaming
+
+**In Active Development** - Following our proven TDD methodology:
+
+### 🖐️ Gesture Recognition System
+- **Hand Up Detection**: Recognize "hand up at shoulder level with palm facing camera"
+- **Performance Optimized**: Gesture detection only runs when human is present
+- **MediaPipe Integration**: Leverages existing pose detection for shoulder reference
+- **Smart Debouncing**: Prevents false positive gesture triggers
+
+### 📡 Server-Sent Events (SSE) Service  
+- **Real-Time Streaming**: Instant gesture events via SSE on port 8766
+- **Web Dashboard Ready**: CORS-enabled for web application integration
+- **Multiple Clients**: Support 10+ simultaneous connections
+- **Connection Management**: Automatic cleanup and heartbeat monitoring
+
+### 🎯 Use Cases
+- **Voice Assistant Stop**: Hand up gesture to pause/stop voice processing
+- **Presentation Control**: Remote gesture control for presentations
+- **Smart Home**: Gesture-based automation triggers
+- **Security Systems**: Gesture-based alerts and controls
+
+📋 **Progress**: Target ~420 comprehensive tests | Architecture documented | Reference samples ready
+
 ## 📦 Installation
 
 ### Basic Installation

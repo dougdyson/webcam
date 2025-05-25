@@ -26,6 +26,7 @@ import json
 import logging
 import weakref
 from enum import Enum
+import time
 
 # FastAPI and WebSocket imports (external dependencies)
 try:
@@ -52,6 +53,9 @@ class EventType(Enum):
     CONFIDENCE_ALERT = "confidence_alert"
     SYSTEM_STATUS = "system_status"
     ERROR_OCCURRED = "error_occurred"
+    GESTURE_DETECTED = "gesture_detected"
+    GESTURE_LOST = "gesture_lost"
+    GESTURE_CONFIDENCE_UPDATE = "gesture_confidence_update"
 
 
 @dataclass
@@ -751,9 +755,572 @@ def example_http_client():
         time.sleep(1)  # Poll every second
 
 
+# ============================================================================
+# GESTURE RECOGNITION + SSE INTEGRATION PATTERNS
+# ============================================================================
+
+@dataclass
+class GestureResult:
+    """Result of gesture detection analysis."""
+    gesture_detected: bool
+    gesture_type: Optional[str] = None  # "hand_up", "hand_down", etc.
+    confidence: float = 0.0
+    hand: Optional[str] = None  # "left", "right", "both"
+    position: Optional[Dict[str, float]] = None
+    palm_facing_camera: bool = False
+    duration_ms: float = 0.0
+    timestamp: datetime = field(default_factory=datetime.now)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "gesture_detected": self.gesture_detected,
+            "gesture_type": self.gesture_type,
+            "confidence": self.confidence,
+            "hand": self.hand,
+            "position": self.position,
+            "palm_facing_camera": self.palm_facing_camera,
+            "duration_ms": self.duration_ms,
+            "timestamp": self.timestamp.isoformat()
+        }
+
+
+class GestureEventPublisher:
+    """Enhanced EventPublisher with gesture-specific events."""
+    
+    def __init__(self):
+        self.base_publisher = EventPublisher()
+        self.gesture_subscribers: List[Callable[[ServiceEvent], Any]] = []
+        
+    def subscribe_to_gestures(self, callback: Callable[[ServiceEvent], Any]) -> None:
+        """Subscribe specifically to gesture events."""
+        def gesture_filter(event: ServiceEvent):
+            if event.event_type in [
+                EventType.GESTURE_DETECTED,
+                EventType.GESTURE_LOST,
+                EventType.GESTURE_CONFIDENCE_UPDATE
+            ]:
+                return callback(event)
+        
+        self.base_publisher.subscribe_async(gesture_filter)
+    
+    def publish_gesture_detected(self, gesture_result: GestureResult) -> None:
+        """Publish gesture detection event."""
+        event = ServiceEvent(
+            event_type=EventType.GESTURE_DETECTED,
+            data=gesture_result.to_dict()
+        )
+        self.base_publisher.publish(event)
+    
+    def publish_gesture_lost(self, last_gesture_type: str, duration_ms: float) -> None:
+        """Publish gesture lost event."""
+        event = ServiceEvent(
+            event_type=EventType.GESTURE_LOST,
+            data={
+                "last_gesture_type": last_gesture_type,
+                "duration_ms": duration_ms
+            }
+        )
+        self.base_publisher.publish(event)
+
+
+class SSEGestureService:
+    """Server-Sent Events service specifically for gesture streaming."""
+    
+    def __init__(self, host: str = "localhost", port: int = 8766):
+        self.host = host
+        self.port = port
+        self.app = FastAPI(title="Gesture Detection SSE Service")
+        self.active_streams: Dict[str, asyncio.Queue] = {}
+        self.client_metadata: Dict[str, Dict] = {}
+        self.gesture_publisher = GestureEventPublisher()
+        self.logger = logging.getLogger(__name__)
+        self._setup_routes()
+        self._setup_middleware()
+    
+    def _setup_middleware(self):
+        """Setup CORS for web client access."""
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["GET", "POST"],
+            allow_headers=["*"],
+        )
+    
+    def _setup_routes(self):
+        """Setup SSE endpoints."""
+        
+        @self.app.get("/events/gestures/{client_id}")
+        async def gesture_stream(client_id: str, request: Request):
+            """Main SSE endpoint for gesture events."""
+            
+            # Create client stream
+            event_queue = asyncio.Queue(maxsize=100)
+            self.active_streams[client_id] = event_queue
+            self.client_metadata[client_id] = {
+                "connected_at": datetime.now(),
+                "events_sent": 0
+            }
+            
+            self.logger.info(f"SSE client connected: {client_id}")
+            
+            async def event_stream():
+                try:
+                    # Send initial connection event
+                    yield self._format_sse_event("connected", {
+                        "client_id": client_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "service": "gesture_detection"
+                    })
+                    
+                    # Send heartbeat every 30 seconds
+                    last_heartbeat = time.time()
+                    
+                    while True:
+                        try:
+                            # Check for client disconnect
+                            if await request.is_disconnected():
+                                break
+                            
+                            # Send heartbeat if needed
+                            current_time = time.time()
+                            if current_time - last_heartbeat > 30:
+                                yield self._format_sse_event("heartbeat", {
+                                    "timestamp": datetime.now().isoformat()
+                                })
+                                last_heartbeat = current_time
+                            
+                            # Wait for events with timeout
+                            try:
+                                event_data = await asyncio.wait_for(
+                                    event_queue.get(), timeout=1.0
+                                )
+                                yield self._format_sse_event(
+                                    event_data["event_type"],
+                                    event_data["data"]
+                                )
+                                self.client_metadata[client_id]["events_sent"] += 1
+                                
+                            except asyncio.TimeoutError:
+                                # No events, continue loop for heartbeat check
+                                continue
+                                
+                        except Exception as e:
+                            self.logger.error(f"Error in event stream for {client_id}: {e}")
+                            break
+                            
+                except Exception as e:
+                    self.logger.error(f"SSE stream error for {client_id}: {e}")
+                    
+                finally:
+                    # Cleanup
+                    if client_id in self.active_streams:
+                        del self.active_streams[client_id]
+                    if client_id in self.client_metadata:
+                        del self.client_metadata[client_id]
+                    self.logger.info(f"SSE client disconnected: {client_id}")
+            
+            return StreamingResponse(
+                event_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "Cache-Control"
+                }
+            )
+        
+        @self.app.get("/health")
+        async def health_check():
+            """Health check endpoint."""
+            return {
+                "status": "healthy",
+                "service": "gesture_sse",
+                "active_connections": len(self.active_streams),
+                "uptime": time.time()
+            }
+        
+        @self.app.get("/clients")
+        async def list_clients():
+            """List active SSE clients."""
+            return {
+                "active_clients": len(self.active_streams),
+                "clients": {
+                    client_id: {
+                        "connected_at": metadata["connected_at"].isoformat(),
+                        "events_sent": metadata["events_sent"]
+                    }
+                    for client_id, metadata in self.client_metadata.items()
+                }
+            }
+    
+    def _format_sse_event(self, event_type: str, data: Dict[str, Any]) -> str:
+        """Format data as Server-Sent Event."""
+        return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+    
+    def setup_gesture_integration(self, gesture_publisher: GestureEventPublisher):
+        """Connect to gesture detection events."""
+        gesture_publisher.subscribe_to_gestures(self._handle_gesture_event)
+    
+    async def _handle_gesture_event(self, event: ServiceEvent):
+        """Handle incoming gesture events and broadcast to SSE clients."""
+        if not self.active_streams:
+            return  # No clients connected
+        
+        event_data = {
+            "event_type": event.event_type.value,
+            "data": event.data,
+            "timestamp": event.timestamp.isoformat()
+        }
+        
+        # Broadcast to all connected clients
+        disconnected_clients = []
+        for client_id, event_queue in self.active_streams.items():
+            try:
+                if event_queue.full():
+                    # Remove oldest event to make room
+                    try:
+                        event_queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                
+                event_queue.put_nowait(event_data)
+                
+            except Exception as e:
+                self.logger.error(f"Error sending to client {client_id}: {e}")
+                disconnected_clients.append(client_id)
+        
+        # Cleanup disconnected clients
+        for client_id in disconnected_clients:
+            if client_id in self.active_streams:
+                del self.active_streams[client_id]
+            if client_id in self.client_metadata:
+                del self.client_metadata[client_id]
+    
+    async def start_server(self):
+        """Start the SSE service."""
+        config = uvicorn.Config(
+            self.app,
+            host=self.host,
+            port=self.port,
+            log_level="info"
+        )
+        server = uvicorn.Server(config)
+        await server.serve()
+
+
+# ============================================================================
+# EXAMPLE USAGE PATTERNS
+# ============================================================================
+
+async def example_gesture_sse_service():
+    """Example of setting up gesture detection with SSE streaming."""
+    
+    # 1. Setup gesture detection (mock)
+    gesture_publisher = GestureEventPublisher()
+    
+    # 2. Setup SSE service
+    sse_service = SSEGestureService(host="localhost", port=8766)
+    sse_service.setup_gesture_integration(gesture_publisher)
+    
+    # 3. Simulate gesture detection events
+    async def simulate_gestures():
+        await asyncio.sleep(2)  # Wait for service to start
+        
+        # Simulate hand up gesture
+        gesture_result = GestureResult(
+            gesture_detected=True,
+            gesture_type="hand_up",
+            confidence=0.85,
+            hand="right",
+            palm_facing_camera=True,
+            duration_ms=1500
+        )
+        gesture_publisher.publish_gesture_detected(gesture_result)
+        
+        await asyncio.sleep(3)
+        
+        # Simulate gesture lost
+        gesture_publisher.publish_gesture_lost("hand_up", 1500)
+    
+    # 4. Run service and simulation
+    await asyncio.gather(
+        sse_service.start_server(),
+        simulate_gestures()
+    )
+
+
+def example_sse_client_javascript():
+    """JavaScript client example for SSE gesture events."""
+    
+    js_code = """
+    // JavaScript SSE client for gesture events
+    class GestureSSEClient {
+        constructor(clientId = 'web_dashboard') {
+            this.clientId = clientId;
+            this.url = `http://localhost:8766/events/gestures/${clientId}`;
+            this.eventSource = null;
+            this.reconnectAttempts = 0;
+            this.maxReconnectAttempts = 5;
+        }
+        
+        connect() {
+            this.eventSource = new EventSource(this.url);
+            
+            this.eventSource.onopen = (event) => {
+                console.log('Connected to gesture SSE stream');
+                this.reconnectAttempts = 0;
+            };
+            
+            this.eventSource.addEventListener('connected', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('SSE connection established:', data);
+            });
+            
+            this.eventSource.addEventListener('gesture_detected', (event) => {
+                const data = JSON.parse(event.data);
+                this.handleGestureDetected(data);
+            });
+            
+            this.eventSource.addEventListener('gesture_lost', (event) => {
+                const data = JSON.parse(event.data);
+                this.handleGestureLost(data);
+            });
+            
+            this.eventSource.addEventListener('heartbeat', (event) => {
+                console.log('Heartbeat received');
+            });
+            
+            this.eventSource.onerror = (event) => {
+                console.error('SSE connection error:', event);
+                this.handleReconnect();
+            };
+        }
+        
+        handleGestureDetected(data) {
+            console.log('Gesture detected:', data);
+            
+            // Update UI
+            const gestureDisplay = document.getElementById('gesture-status');
+            if (gestureDisplay) {
+                gestureDisplay.textContent = `Gesture: ${data.gesture_type} (${data.confidence})`;
+                gestureDisplay.className = 'gesture-active';
+            }
+            
+            // Trigger custom events
+            window.dispatchEvent(new CustomEvent('gestureDetected', {
+                detail: data
+            }));
+        }
+        
+        handleGestureLost(data) {
+            console.log('Gesture lost:', data);
+            
+            // Update UI
+            const gestureDisplay = document.getElementById('gesture-status');
+            if (gestureDisplay) {
+                gestureDisplay.textContent = 'No gesture';
+                gestureDisplay.className = 'gesture-inactive';
+            }
+            
+            // Trigger custom events
+            window.dispatchEvent(new CustomEvent('gestureLost', {
+                detail: data
+            }));
+        }
+        
+        handleReconnect() {
+            if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                this.reconnectAttempts++;
+                const delay = Math.pow(2, this.reconnectAttempts) * 1000; // Exponential backoff
+                
+                console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+                
+                setTimeout(() => {
+                    this.disconnect();
+                    this.connect();
+                }, delay);
+            } else {
+                console.error('Max reconnection attempts reached');
+            }
+        }
+        
+        disconnect() {
+            if (this.eventSource) {
+                this.eventSource.close();
+                this.eventSource = null;
+            }
+        }
+    }
+    
+    // Usage
+    const gestureClient = new GestureSSEClient('dashboard_001');
+    gestureClient.connect();
+    
+    // Listen for custom gesture events
+    window.addEventListener('gestureDetected', (event) => {
+        console.log('Custom gesture event:', event.detail);
+        // Your application logic here
+    });
+    """
+    
+    return js_code
+
+
+def example_python_sse_client():
+    """Python client example for testing SSE gesture events."""
+    
+    python_code = """
+    import requests
+    import json
+    import time
+    from typing import Iterator
+    
+    class GestureSSEClient:
+        def __init__(self, client_id: str = "python_client"):
+            self.client_id = client_id
+            self.url = f"http://localhost:8766/events/gestures/{client_id}"
+            
+        def connect(self) -> Iterator[dict]:
+            \"""Connect to SSE stream and yield events.\"""
+            try:
+                response = requests.get(
+                    self.url,
+                    stream=True,
+                    headers={'Accept': 'text/event-stream'},
+                    timeout=(10, None)  # 10s connect, no read timeout
+                )
+                response.raise_for_status()
+                
+                for line in response.iter_lines(decode_unicode=True):
+                    if line:
+                        if line.startswith('event:'):
+                            event_type = line[6:].strip()
+                        elif line.startswith('data:'):
+                            try:
+                                data = json.loads(line[5:].strip())
+                                yield {
+                                    'event_type': event_type,
+                                    'data': data
+                                }
+                            except json.JSONDecodeError:
+                                continue
+                                
+            except requests.exceptions.RequestException as e:
+                print(f"SSE connection error: {e}")
+                
+        def test_connection(self):
+            \"""Test SSE connection and print events.\"""
+            print(f"Connecting to {self.url}")
+            
+            for event in self.connect():
+                print(f"Event: {event['event_type']}")
+                print(f"Data: {event['data']}")
+                print("-" * 40)
+                
+                if event['event_type'] == 'gesture_detected':
+                    self.handle_gesture_detected(event['data'])
+                elif event['event_type'] == 'gesture_lost':
+                    self.handle_gesture_lost(event['data'])
+                    
+        def handle_gesture_detected(self, data: dict):
+            \"""Handle gesture detection event.\"""
+            gesture_type = data.get('gesture_type', 'unknown')
+            confidence = data.get('confidence', 0)
+            hand = data.get('hand', 'unknown')
+            
+            print(f"🖐️  Gesture detected: {gesture_type} ({hand} hand, {confidence:.2f} confidence)")
+            
+        def handle_gesture_lost(self, data: dict):
+            \"""Handle gesture lost event.\"""
+            duration = data.get('duration_ms', 0)
+            print(f"👋 Gesture ended (duration: {duration}ms)")
+    
+    # Usage
+    if __name__ == "__main__":
+        client = GestureSSEClient("test_client_001")
+        client.test_connection()
+    """
+    
+    return python_code
+
+
+def example_production_integration():
+    """Example of production-ready gesture + SSE integration."""
+    
+    class ProductionGestureService:
+        """Production-ready gesture detection with SSE streaming."""
+        
+        def __init__(self):
+            self.gesture_publisher = GestureEventPublisher()
+            self.sse_service = SSEGestureService()
+            self.http_service = None  # Existing HTTP service
+            self.logger = logging.getLogger(__name__)
+            
+        async def start_services(self):
+            """Start all services simultaneously."""
+            
+            # Connect SSE to gesture events
+            self.sse_service.setup_gesture_integration(self.gesture_publisher)
+            
+            # Start services concurrently
+            await asyncio.gather(
+                self.sse_service.start_server(),
+                self.run_gesture_detection(),
+                return_exceptions=True
+            )
+            
+        async def run_gesture_detection(self):
+            """Mock gesture detection loop."""
+            while True:
+                try:
+                    # In real implementation, this would be connected to:
+                    # - Camera frame processing
+                    # - MediaPipe hands detection
+                    # - Gesture classification
+                    
+                    await asyncio.sleep(2)
+                    
+                    # Simulate gesture detection
+                    if time.time() % 10 < 5:  # 50% of the time
+                        gesture_result = GestureResult(
+                            gesture_detected=True,
+                            gesture_type="hand_up",
+                            confidence=0.8 + (time.time() % 1) * 0.2,
+                            hand="right",
+                            palm_facing_camera=True,
+                            duration_ms=2000
+                        )
+                        self.gesture_publisher.publish_gesture_detected(gesture_result)
+                    else:
+                        self.gesture_publisher.publish_gesture_lost("hand_up", 2000)
+                        
+                except Exception as e:
+                    self.logger.error(f"Error in gesture detection: {e}")
+                    await asyncio.sleep(1)
+    
+    return ProductionGestureService
+
+
 if __name__ == "__main__":
-    # Example usage
-    if FASTAPI_AVAILABLE:
-        asyncio.run(example_multi_service_setup())
+    print("Gesture + SSE Service Patterns")
+    print("1. Run example gesture SSE service")
+    print("2. Show JavaScript client code")
+    print("3. Show Python client code")
+    print("4. Run production integration example")
+    
+    choice = input("Enter choice (1-4): ")
+    
+    if choice == "1":
+        asyncio.run(example_gesture_sse_service())
+    elif choice == "2":
+        print(example_sse_client_javascript())
+    elif choice == "3":
+        print(example_python_sse_client())
+    elif choice == "4":
+        service = example_production_integration()
+        asyncio.run(service.start_services())
     else:
-        print("FastAPI not available. Install with: pip install fastapi uvicorn") 
+        print("Invalid choice") 
