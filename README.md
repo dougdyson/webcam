@@ -93,27 +93,47 @@ class AudioProcessor:
             return {"processed": False, "reason": "no_human"}
 ```
 
-### HTTP Service Integration
+### HTTP Service (Production Ready)
+
+Start the webcam detection HTTP service:
+
+```bash
+conda activate webcam
+python webcam_http_service.py
+```
+
+The service provides REST endpoints for human presence detection:
+- **Primary**: `GET http://localhost:8767/presence/simple` → `{"human_present": true/false}`
+- **Full status**: `GET http://localhost:8767/presence` → Complete detection details
+- **Health check**: `GET http://localhost:8767/health` → Service status
+- **Performance**: `GET http://localhost:8767/statistics` → Metrics
+- **History**: `GET http://localhost:8767/history` → Detection history (optional)
+
+### Integration Examples
+
+#### Guard Clause Pattern (Speaker Verification, etc.)
 ```python
 import requests
 
-def check_human_presence():
-    """Simple HTTP API integration."""
+def should_process_audio() -> bool:
+    """Check if human is present before processing audio."""
     try:
         response = requests.get("http://localhost:8767/presence/simple", timeout=1.0)
-        if response.status_code == 200:
-            return response.json().get("human_present", False)
-    except requests.RequestException:
+        return response.json().get("human_present", False)
+    except:
         return True  # Fail safe
-    return False
+```
 
-# Use in your application
-if check_human_presence():
-    # Process audio/video
-    pass
-else:
-    # Skip processing
-    pass
+#### Smart Home Integration
+```python
+import requests
+
+def trigger_automation():
+    """Trigger smart home actions based on presence."""
+    response = requests.get("http://localhost:8767/presence/simple")
+    if response.json().get("human_present"):
+        # Human detected - turn on lights, start music, etc.
+        activate_home_automation()
 ```
 
 ## 🔧 Detection Types

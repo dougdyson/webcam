@@ -62,10 +62,18 @@ class PresenceStatus:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert status to dictionary for JSON response."""
+        # Handle both datetime and float timestamp values
+        if isinstance(self.last_detection, datetime):
+            last_detection_str = self.last_detection.isoformat()
+        elif isinstance(self.last_detection, (int, float)):
+            last_detection_str = datetime.fromtimestamp(self.last_detection).isoformat()
+        else:
+            last_detection_str = datetime.now().isoformat()
+            
         return {
             "human_present": self.human_present,
             "confidence": self.confidence,
-            "last_detection": self.last_detection.isoformat(),
+            "last_detection": last_detection_str,
             "detection_count": self.detection_count,
             "uptime_seconds": self.uptime_seconds
         }
