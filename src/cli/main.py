@@ -109,6 +109,8 @@ class MainApp:
                 min_detection_confidence=self.config.detection_confidence_threshold
             )
             self.detector = MediaPipeDetector(detector_config)
+            # Initialize the detector
+            self.detector.initialize()
             
             # Initialize frame queue with default parameters
             self.frame_queue = FrameQueue(max_size=10, overflow_strategy='drop_oldest')
@@ -185,7 +187,7 @@ class MainApp:
                 await self.frame_processor.stop()
             
             if self.camera_manager:
-                self.camera_manager.release()
+                self.camera_manager.cleanup()
             
             if self.detector:
                 self.detector.cleanup()
