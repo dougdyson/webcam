@@ -44,8 +44,10 @@ class MainAppConfig:
     detection_confidence_threshold: float = 0.5
     enable_logging: bool = True
     log_level: str = 'INFO'
+    log_file: Optional[str] = None
     enable_display: bool = False
     max_runtime_seconds: Optional[float] = None
+    config_file: Optional[str] = None
     
     def __post_init__(self):
         """Validate configuration parameters."""
