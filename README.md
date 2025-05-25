@@ -252,7 +252,7 @@ Add human presence context to development tools and monitoring systems.
 
 ## 🧪 Testing
 
-The package includes 264+ comprehensive tests covering:
+The package includes 320 comprehensive tests covering:
 - Unit tests for all components
 - Integration tests for complete workflows
 - Multi-modal detection validation
