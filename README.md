@@ -142,7 +142,7 @@ def trigger_automation():
 
 ### MultiModal (Recommended)
 - **Best For**: All scenarios, extended range detection
-- **Range**: Desk distance to kitchen distance (3x extended)
+- **Range**: Close to medium distance
 - **Technology**: Combined pose + face detection with intelligent fusion
 - **Performance**: Optimal balance of accuracy and range
 
