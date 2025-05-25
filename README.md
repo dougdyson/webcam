@@ -8,6 +8,8 @@
 
 Webcam Detection provides a comprehensive, local-processing human presence detection system using computer vision. Perfect for guard clauses in speaker verification, smart home automation, security systems, and any application requiring reliable human presence detection.
 
+> 📁 **New to the project?** See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for a quick navigation guide.
+
 ## 🚀 Key Features
 
 - **🎯 Multi-Modal Detection**: Combines MediaPipe pose and face detection for 3x extended range

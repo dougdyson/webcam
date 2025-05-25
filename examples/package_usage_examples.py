@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Example: Using webcam-detection after PyPI publishing
-======================================================
+Package Usage Examples for webcam-detection
+===========================================
 
 This shows how other developers would use your package after you publish it.
 
@@ -130,7 +130,7 @@ def example_simple_guard_clause():
     camera.cleanup()
 
 def example_http_service_integration():
-    """HTTP service integration example."""
+    """HTTP service integration example (RECOMMENDED)."""
     print("\n=== HTTP Service Integration Example ===")
     
     import requests
@@ -140,7 +140,7 @@ def example_http_service_integration():
             self.service_url = service_url
         
         def is_human_present(self):
-            """Check presence via HTTP API."""
+            """Check presence via HTTP API (PRODUCTION PATTERN)."""
             try:
                 response = requests.get(f"{self.service_url}/presence/simple", timeout=1.0)
                 if response.status_code == 200:
@@ -154,7 +154,7 @@ def example_http_service_integration():
         def get_detailed_presence(self):
             """Get detailed presence information."""
             try:
-                response = requests.get(f"{self.service_url}/presence/detailed", timeout=1.0)
+                response = requests.get(f"{self.service_url}/presence", timeout=1.0)
                 if response.status_code == 200:
                     return response.json()
             except requests.RequestException:
@@ -166,6 +166,57 @@ def example_http_service_integration():
     print(f"Human present: {checker.is_human_present()}")
     print(f"Detailed info: {checker.get_detailed_presence()}")
 
+def example_speaker_verification_production():
+    """Production speaker verification integration."""
+    print("\n=== Production Speaker Verification Example ===")
+    
+    import requests
+    import time
+    
+    def should_process_audio() -> bool:
+        """Production guard clause for speaker verification."""
+        try:
+            response = requests.get("http://localhost:8767/presence/simple", timeout=1.0)
+            if response.status_code == 200:
+                return response.json().get("human_present", False)
+        except requests.RequestException:
+            # Fail safe: process audio if service unavailable
+            return True
+        return False
+    
+    def speaker_verification_pipeline(audio_stream):
+        """Example speaker verification pipeline with human presence guard."""
+        if not should_process_audio():
+            print("⏭️  No human detected - skipping audio processing")
+            return {"status": "skipped", "reason": "no_human_present"}
+        
+        print("✅ Human detected - processing audio")
+        
+        # Your actual speaker verification code would go here
+        # For example:
+        # 1. Transcribe audio
+        # 2. Extract speaker features
+        # 3. Compare against known voices
+        # 4. Return speaker ID or confidence score
+        
+        # Simulated processing
+        time.sleep(0.1)  # Simulate processing time
+        
+        return {
+            "status": "processed",
+            "speaker_id": "user_123",
+            "confidence": 0.92,
+            "transcript": "Hello, this is my voice",
+            "human_present": True
+        }
+    
+    # Example usage
+    print("Testing production pipeline...")
+    for i in range(3):
+        result = speaker_verification_pipeline(f"audio_stream_{i}")
+        print(f"Audio {i+1}: {result}")
+        time.sleep(1)
+
 def example_package_in_requirements_txt():
     """Show how to include in requirements.txt."""
     print("\n=== Requirements.txt Integration ===")
@@ -174,13 +225,10 @@ def example_package_in_requirements_txt():
 # requirements.txt for a project using webcam-detection
 
 # Core detection only
-webcam-detection>=2.0.0
+webcam-detection>=3.0.0
 
-# With service features
-# webcam-detection[service]>=2.0.0
-
-# With all features  
-# webcam-detection[all]>=2.0.0
+# With service features (recommended for production)
+# webcam-detection[service]>=3.0.0
 
 # Other project dependencies
 numpy>=1.24.0
@@ -199,48 +247,94 @@ FROM python:3.11-slim
 
 # Install system dependencies for webcam access
 RUN apt-get update && apt-get install -y \\
-    libgl1-mesa-glx \\
+    libopencv-dev \\
+    python3-opencv \\
     libglib2.0-0 \\
+    libsm6 \\
+    libxext6 \\
+    libxrender-dev \\
+    libgomp1 \\
     && rm -rf /var/lib/apt/lists/*
 
-# Install your published package
-RUN pip install webcam-detection[service]
-
-# Copy your application
-COPY . /app
+# Set working directory
 WORKDIR /app
 
-# Install your app's dependencies
-RUN pip install -r requirements.txt
+# Copy requirements and install Python packages
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Run your application
-CMD ["python", "your_app.py"]
+# Copy your application
+COPY . .
+
+# Expose service port
+EXPOSE 8767
+
+# Start the webcam service
+CMD ["python", "webcam_http_service.py"]
 """
     
-    print("Dockerfile example:")
+    print("Example Dockerfile:")
     print(dockerfile_example)
 
-if __name__ == "__main__":
-    print("🎯 WEBCAM-DETECTION PACKAGE USAGE EXAMPLES")
+def example_service_startup():
+    """Show how to start the service."""
+    print("\n=== Service Startup Example ===")
+    
+    startup_script = """
+#!/bin/bash
+# start_webcam_service.sh
+
+echo "🚀 Starting Webcam Detection Service..."
+
+# Activate virtual environment (if using one)
+# source venv/bin/activate
+
+# Start the service
+python webcam_http_service.py &
+
+# Wait for service to start
+sleep 3
+
+# Test if service is running
+curl -s http://localhost:8767/health || {
+    echo "❌ Service failed to start"
+    exit 1
+}
+
+echo "✅ Service started successfully!"
+echo "📡 Available at: http://localhost:8767"
+echo "🎯 Guard clause endpoint: http://localhost:8767/presence/simple"
+"""
+    
+    print("Example startup script:")
+    print(startup_script)
+
+def main():
+    """Run all examples."""
+    print("🎯 Webcam Detection Package - Usage Examples")
     print("=" * 50)
-    print("After publishing to PyPI, developers can use your package like this:\n")
     
     try:
-        example_basic_usage()
-        example_simple_guard_clause()
-        example_speaker_verification_guard()
+        # Run HTTP service example (most common)
         example_http_service_integration()
+        
+        # Run speaker verification production example
+        example_speaker_verification_production()
+        
+        # Show other integration options
         example_package_in_requirements_txt()
         example_docker_integration()
+        example_service_startup()
+        
+        print("\n" + "=" * 50)
+        print("✅ All examples completed!")
+        print("💡 Recommendation: Use HTTP service integration for production")
         
     except ImportError as e:
-        print(f"Package not installed: {e}")
-        print("\nTo use these examples after publishing:")
-        print("pip install webcam-detection")
+        print(f"❌ Package not installed: {e}")
+        print("💡 Install with: pip install webcam-detection[service]")
     except Exception as e:
-        print(f"Example failed (expected without camera): {e}")
-        print("✅ Package import works - camera needed for detection")
-    
-    print("\n" + "=" * 50)
-    print("✅ Ready for PyPI publishing!")
-    print("Your package will enable all these integration patterns.") 
+        print(f"❌ Example failed: {e}")
+
+if __name__ == "__main__":
+    main() 
