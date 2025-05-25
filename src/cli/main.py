@@ -124,7 +124,9 @@ class MainApp:
             )
             
             # Initialize presence filter
-            filter_config = PresenceFilterConfig()
+            filter_config = PresenceFilterConfig(
+                min_confidence_threshold=self.config.detection_confidence_threshold
+            )
             self.presence_filter = PresenceFilter(filter_config)
             
             logger.info("All application components initialized successfully")
