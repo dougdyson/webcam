@@ -49,9 +49,7 @@ webcam/
 │   │
 ├── 📋 PROJECT DOCS
 │   ├── ARCHITECTURE.md            # System architecture (comprehensive)
-│   ├── TDD_PLAN.md               # Development methodology
-│   ├── TDD_PLAN_SERVICE_LAYER.md # Service layer development
-│   └── MULTIMODAL_IMPLEMENTATION_SUMMARY.md  # Implementation details
+│   └── TDD_PLAN.md               # Development methodology
 │
 └── 💾 DATA & OUTPUT
     ├── data/                      # Logs, temporary files, models
@@ -72,7 +70,7 @@ webcam/
 | 🏗️ **Understand architecture** | `ARCHITECTURE.md` |
 | ⚙️ **Configure settings** | `config/` directory |
 | 🐛 **Debug issues** | `data/` directory for logs |
-| 📦 **Package/publish** | `setup.py` and `PUBLISHING_GUIDE.md` |
+| 📦 **Package/publish** | `setup.py` and `docs/PUBLISHING_GUIDE.md` |
 
 ## 🔥 Most Important Files
 

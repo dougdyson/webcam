@@ -162,16 +162,23 @@ pip install webcam-detection
 
 ```python
 from webcam_detection import create_detector
+import cv2
 
 # Create detector
 detector = create_detector('multimodal')
 detector.initialize()
 
+# Get camera frame
+cap = cv2.VideoCapture(0)
+
 # Use in speaker verification guard clause
 def should_process_audio():
     try:
-        human_present, confidence, _ = detector.detect_person()
-        return human_present and confidence > 0.6
+        ret, frame = cap.read()
+        if ret:
+            result = detector.detect(frame)
+            return result.human_present and result.confidence > 0.6
+        return False
     except:
         return True  # Fail safe
 
@@ -183,6 +190,7 @@ else:
     # Skip processing
     pass
 
+cap.release()
 detector.cleanup()
 ```
 

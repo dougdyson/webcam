@@ -1,66 +1,60 @@
 # Examples Directory
 
-This directory contains **simple, quick-start examples** for getting started with webcam-detection.
+Quick-start examples for getting up and running with webcam-detection package.
 
-> **📚 For comprehensive documentation and advanced examples, see the `docs/` directory**
+## 🚀 Quick Start (RECOMMENDED)
 
-## Quick Start Examples
+**For Production Use:**
 
-### `package_usage_examples.py`
-Simple, focused examples for common use cases:
-- **Basic Detection**: Quick detector setup
-- **Speaker Verification Guard**: Simple guard clause pattern
-- **HTTP Service Integration**: Basic service consumption
-- **Production Patterns**: Minimal working examples
+1. **Start the HTTP service:**
+   ```bash
+   python webcam_http_service.py
+   ```
 
-## 📖 Documentation Structure
+2. **Use HTTP guard clause in your code:**
+   ```python
+   import requests
+   
+   def should_process_audio():
+       try:
+           response = requests.get("http://localhost:8767/presence/simple", timeout=1.0)
+           return response.json().get("human_present", False)
+       except:
+           return True  # Fail safe
+   ```
 
-- **`examples/`** (This directory): Quick-start examples and minimal code samples
-- **`docs/`** (Comprehensive): Full documentation, advanced patterns, and detailed guides
-  - `PACKAGE_USAGE.md`: Complete API documentation
-  - `package_integration_examples.py`: Advanced integration patterns
-  - `service_patterns.py`: Service architecture patterns
-  - `configuration_samples.py`: Configuration examples
-  - `testing_patterns.py`: Testing strategies
-  - And more...
+## 📁 What's Here
 
-## Usage
+- **`package_usage_examples.py`** - Production-ready integration patterns
+  - ✅ HTTP service startup (recommended)
+  - ✅ Speaker verification guard clauses  
+  - ✅ Client wrapper classes
+  - ✅ Direct API usage (alternative)
+  - ✅ Docker deployment examples
 
-### Running Examples
+## 🆚 Examples vs Docs
+
+| **Purpose** | **Use This** |
+|-------------|--------------|
+| 🚀 **Get started quickly** | `examples/` - Simple, working code |
+| 📖 **Learn comprehensive patterns** | `docs/` - Detailed architecture & advanced patterns |
+| 🎯 **Speaker verification integration** | `examples/package_usage_examples.py` |
+| 🏗️ **Custom service architecture** | `docs/service_patterns.py` |
+| 📚 **Complete API reference** | `docs/PACKAGE_USAGE.md` |
+
+## 🏃 Run Examples
+
 ```bash
-# Quick examples from this directory
+# Run all examples
 python examples/package_usage_examples.py
 
-# For comprehensive examples, see docs/
-python docs/package_integration_examples.py
+# Or specific examples
+python -c "from examples.package_usage_examples import example_speaker_verification_production; example_speaker_verification_production()"
 ```
 
-### Prerequisites
-```bash
-# Install with service features
-pip install webcam-detection[service]
+## 💡 Next Steps
 
-# Or local development
-pip install -e .[service]
-```
-
-## 🎯 Production Recommendation
-
-For production use, refer to the comprehensive `docs/` directory. For quick prototyping, use these examples:
-
-**Quick Guard Clause**:
-```python
-import requests
-
-def should_process_audio() -> bool:
-    try:
-        response = requests.get("http://localhost:8767/presence/simple", timeout=1.0)
-        return response.json().get("human_present", False)
-    except:
-        return True  # Fail safe
-```
-
-**Start Service**:
-```bash
-python webcam_http_service.py
-``` 
+1. **Quick prototype**: Start with examples here
+2. **Production deployment**: Reference `docs/production_service_patterns.py`
+3. **Advanced patterns**: See `docs/service_patterns.py`
+4. **API reference**: Check `docs/PACKAGE_USAGE.md` 

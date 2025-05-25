@@ -22,34 +22,45 @@ import time
 import requests
 from typing import Optional, Dict, Any, Callable
 from datetime import datetime
+import cv2
 
 # ============================================================================
 # Example 1: Simple Detection Integration
 # ============================================================================
 
 def example_basic_detection():
-    """Basic human detection without service layer."""
+    """Basic detection example with proper frame handling."""
     from webcam_detection import create_detector
     
-    # Create multimodal detector (default)
+    # Create detector
     detector = create_detector('multimodal')
     
     try:
         # Initialize detector
         detector.initialize()
         
-        # Perform detection
-        human_present, confidence, detection_type = detector.detect_person()
+        # Get camera frame
+        cap = cv2.VideoCapture(0)
+        ret, frame = cap.read()
         
-        print(f"Human present: {human_present}")
-        print(f"Confidence: {confidence:.2f}")
-        print(f"Detection type: {detection_type}")
-        
-        # Get detailed information
-        if hasattr(detector, 'get_detection_info'):
-            info = detector.get_detection_info()
-            print(f"Pose confidence: {info.get('pose_confidence', 0):.2f}")
-            print(f"Face confidence: {info.get('face_confidence', 0):.2f}")
+        if ret:
+            # Perform detection with current API
+            result = detector.detect(frame)
+            
+            print(f"Human present: {result.human_present}")
+            print(f"Confidence: {result.confidence:.2f}")
+            print(f"Detection type: multimodal")
+            
+            # Access detailed information
+            if result.landmarks:
+                pose_landmarks = result.landmarks.get('pose', [])
+                face_landmarks = result.landmarks.get('face', [])
+                print(f"Pose landmarks: {len(pose_landmarks)}")
+                print(f"Face landmarks: {len(face_landmarks)}")
+        else:
+            print("No camera frame available")
+            
+        cap.release()
             
     finally:
         # Clean up resources
@@ -105,7 +116,7 @@ class SpeakerVerificationGuard:
         """Get detailed presence information."""
         try:
             response = requests.get(
-                f"{self.presence_service_url}/presence/detailed",
+                f"{self.presence_service_url}/presence",
                 timeout=self.timeout
             )
             
@@ -288,11 +299,15 @@ def example_service_integration():
     """Example of running the detection system as a service."""
     from webcam_detection.service import DetectionServiceManager, HTTPServiceConfig
     from webcam_detection import create_detector
+    import cv2
     
     async def run_service():
         # Create detection system
         detector = create_detector('multimodal')
         detector.initialize()
+        
+        # Create camera
+        cap = cv2.VideoCapture(0)
         
         # Create service manager
         manager = DetectionServiceManager()
@@ -313,26 +328,24 @@ def example_service_integration():
             
             # Simulate detection loop
             for i in range(100):
-                # Perform detection
-                human_present, confidence, detection_type = detector.detect_person()
+                # Get frame from camera
+                ret, frame = cap.read()
                 
-                # Create detection result
-                from webcam_detection.detection.result import DetectionResult
-                result = DetectionResult(
-                    human_present=human_present,
-                    confidence=confidence,
-                    bounding_box=[100, 100, 200, 300] if human_present else None,
-                    landmarks=[]
-                )
-                
-                # Publish to service layer
-                manager.publish_detection_result(result)
+                if ret:
+                    # Perform detection with current API
+                    result = detector.detect(frame)
+                    
+                    # Publish to service layer
+                    manager.publish_detection_result(result)
+                else:
+                    print("Warning: No camera frame available")
                 
                 await asyncio.sleep(1)  # 1 FPS for demo
                 
         finally:
             print("🛑 Stopping services...")
             await manager.stop_all_services()
+            cap.release()
             detector.cleanup()
     
     # Run the service
@@ -422,7 +435,16 @@ def example_testing_integration():
     def test_speaker_verification_with_presence(mock_create_detector):
         # Setup mock detector
         mock_detector = Mock()
-        mock_detector.detect_person.return_value = (True, 0.85, 'multimodal')
+        
+        # Mock DetectionResult object instead of tuple
+        from webcam_detection.detection.result import DetectionResult
+        mock_result = DetectionResult(
+            human_present=True,
+            confidence=0.85,
+            bounding_box=[100, 100, 200, 300],
+            landmarks={'pose': [], 'face': []}
+        )
+        mock_detector.detect.return_value = mock_result
         mock_create_detector.return_value = mock_detector
         
         # Test your application logic

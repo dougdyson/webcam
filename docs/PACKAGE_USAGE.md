@@ -113,62 +113,137 @@ jobs:
 ### 1. Basic Human Detection
 ```python
 from webcam_detection import create_detector
+import cv2
 
-# Create multimodal detector (default)
+# Create multimodal detector (default - recommended)
 detector = create_detector('multimodal')
 
 try:
+    # Initialize detector
     detector.initialize()
-    human_present, confidence, detection_type = detector.detect_person()
-    print(f"Human present: {human_present} (confidence: {confidence:.2f})")
+    
+    # Get camera frame
+    cap = cv2.VideoCapture(0)
+    ret, frame = cap.read()
+    
+    if ret:
+        # Detect human in frame
+        result = detector.detect(frame)
+        print(f"Human present: {result.human_present}")
+        print(f"Confidence: {result.confidence:.2f}")
+        print(f"Detection type: multimodal")
+        
+        # Access detailed results
+        if result.landmarks:
+            print(f"Pose landmarks: {len(result.landmarks.get('pose', []))}")
+            print(f"Face landmarks: {len(result.landmarks.get('face', []))}")
+    
+    cap.release()
 finally:
     detector.cleanup()
 ```
 
-### 2. Speaker Verification Guard Clause
+### 2. Production HTTP Service (Recommended)
+```python
+# Start the production service
+import subprocess
+
+# Option 1: Direct service execution
+subprocess.run(["python", "webcam_http_service.py"])
+
+# Option 2: Background service
+import threading
+
+def start_detection_service():
+    subprocess.run(["python", "webcam_http_service.py"])
+
+service_thread = threading.Thread(target=start_detection_service, daemon=True)
+service_thread.start()
+```
+
+### 3. Speaker Verification Guard Clause (Production Pattern)
 ```python
 import requests
 
-def should_process_audio():
-    """Check if human is present before processing audio."""
+def should_process_audio() -> bool:
+    """Production-ready guard clause for speaker verification."""
     try:
         response = requests.get("http://localhost:8767/presence/simple", timeout=1.0)
         if response.status_code == 200:
             return response.json().get("human_present", False)
-    except:
-        return True  # Fail safe
+    except requests.RequestException:
+        # Fail safe: process audio if service unavailable
+        return True
     return False
 
-# In your audio processing pipeline:
-if should_process_audio():
-    # Continue with speaker verification
-    process_audio()
-else:
-    # Skip processing
-    pass
+# Usage in audio pipeline
+def audio_processing_pipeline(audio_data):
+    """Example audio processing with presence guard."""
+    if should_process_audio():
+        # Human present - continue with speaker verification
+        return run_speaker_verification(audio_data)
+    else:
+        # No human - skip expensive processing
+        return {"status": "skipped", "reason": "no_human_present"}
+
+def run_speaker_verification(audio_data):
+    """Placeholder for actual speaker verification."""
+    # Your speaker verification code here
+    return {"speaker_id": "user123", "confidence": 0.92}
 ```
 
-### 3. Service Integration
+### 4. Complete Service Integration
 ```python
-from webcam_detection.service import DetectionServiceManager, HTTPServiceConfig
-from webcam_detection import create_detector
+import requests
+import time
+from typing import Dict, Any, Optional
 
-async def run_detection_service():
-    # Create detection system
-    detector = create_detector('multimodal')
-    detector.initialize()
+class WebcamDetectionClient:
+    """Client wrapper for webcam detection service."""
     
-    # Create service manager
-    manager = DetectionServiceManager()
+    def __init__(self, base_url: str = "http://localhost:8767"):
+        self.base_url = base_url
+        
+    def is_human_present(self) -> bool:
+        """Simple presence check."""
+        try:
+            response = requests.get(f"{self.base_url}/presence/simple", timeout=1.0)
+            return response.json().get("human_present", False)
+        except:
+            return False
     
-    # Add HTTP service
-    http_config = HTTPServiceConfig(port=8767)
-    manager.add_http_service(http_config)
+    def get_presence_details(self) -> Optional[Dict[str, Any]]:
+        """Get detailed presence information."""
+        try:
+            response = requests.get(f"{self.base_url}/presence", timeout=2.0)
+            return response.json() if response.status_code == 200 else None
+        except:
+            return None
     
-    # Start services
-    await manager.start_all_services()
-    
-    # Your detection loop here...
+    def get_service_health(self) -> Dict[str, Any]:
+        """Check service health."""
+        try:
+            response = requests.get(f"{self.base_url}/health", timeout=1.0)
+            return response.json() if response.status_code == 200 else {"status": "error"}
+        except:
+            return {"status": "unavailable"}
+
+# Usage examples
+client = WebcamDetectionClient()
+
+# Simple presence check
+if client.is_human_present():
+    print("Human detected!")
+
+# Detailed presence information
+details = client.get_presence_details()
+if details:
+    print(f"Confidence: {details.get('confidence', 0):.2f}")
+    print(f"Last detection: {details.get('last_detection', 'unknown')}")
+
+# Service health monitoring
+health = client.get_service_health()
+print(f"Service status: {health.get('status', 'unknown')}")
 ```
 
 ## API Reference
@@ -194,11 +269,46 @@ detector = create_detector('multimodal', {
 })
 ```
 
-#### `HumanDetector.detect_person()`
-Performs human detection on current camera frame.
+#### `HumanDetector.detect(frame)`
+Performs human detection on provided frame.
+
+**Parameters:**
+- `frame` (numpy.ndarray): Camera frame in BGR format (from cv2.VideoCapture)
 
 **Returns:**
-- `tuple`: (human_present: bool, confidence: float, detection_type: str)
+- `DetectionResult`: Object with attributes:
+  - `human_present` (bool): Whether human detected
+  - `confidence` (float): Detection confidence (0.0-1.0)
+  - `landmarks` (dict): Pose and face landmark data
+  - `bounding_box` (tuple): Detection bounding box coordinates
+  - `detection_info` (dict): Additional detection metadata
+
+**Example:**
+```python
+import cv2
+from webcam_detection import create_detector
+
+detector = create_detector('multimodal')
+detector.initialize()
+
+cap = cv2.VideoCapture(0)
+ret, frame = cap.read()
+
+if ret:
+    result = detector.detect(frame)
+    print(f"Human present: {result.human_present}")
+    print(f"Confidence: {result.confidence:.2f}")
+    
+    # Access landmark data
+    if result.landmarks:
+        pose_landmarks = result.landmarks.get('pose', [])
+        face_landmarks = result.landmarks.get('face', [])
+        print(f"Pose landmarks: {len(pose_landmarks)}")
+        print(f"Face landmarks: {len(face_landmarks)}")
+
+cap.release()
+detector.cleanup()
+```
 
 ### Service Layer
 
@@ -217,27 +327,34 @@ Manages multiple service types for detection system.
 
 When running the HTTP service (default port 8767):
 
-- `GET /presence/simple`: Simple presence check
+- `GET /presence/simple`: Optimized for guard clauses
   ```json
-  {"human_present": true, "confidence": 0.85, "timestamp": "2024-01-01T12:00:00Z"}
+  {"human_present": true}
   ```
 
-- `GET /presence/detailed`: Detailed presence information
+- `GET /presence`: Complete presence information
   ```json
   {
     "human_present": true,
     "confidence": 0.85,
-    "detection_type": "multimodal",
-    "pose_confidence": 0.9,
-    "face_confidence": 0.8,
-    "timestamp": "2024-01-01T12:00:00Z",
-    "processing_time_ms": 45
+    "detection_count": 1247,
+    "last_detection": "2024-01-01T12:00:00Z",
+    "uptime_seconds": 3600.5
   }
   ```
 
 - `GET /health`: Service health check
-- `GET /statistics`: Detection statistics
-- `GET /history`: Detection history (if enabled)
+  ```json
+  {
+    "status": "healthy",
+    "uptime_seconds": 3600.5,
+    "total_detections": 1247,
+    "service_version": "3.0.0"
+  }
+  ```
+
+- `GET /statistics`: Performance metrics
+- `GET /history`: Detection history (optional)
 
 ## Integration Patterns
 
@@ -260,7 +377,7 @@ class SpeakerVerificationGuard:
         return False
 
 # Usage in audio pipeline
-guard = SpeakerVerificationGuard(threshold=0.7)
+guard = SpeakerVerificationGuard()
 if guard.should_process_audio():
     result = perform_speaker_verification(audio_data)
 ```
@@ -384,7 +501,16 @@ from unittest.mock import Mock, patch
 def test_my_integration(mock_create_detector):
     # Setup mock
     mock_detector = Mock()
-    mock_detector.detect_person.return_value = (True, 0.85, 'multimodal')
+    
+    # Mock DetectionResult object
+    from webcam_detection.detection.result import DetectionResult
+    mock_result = DetectionResult(
+        human_present=True,
+        confidence=0.85,
+        bounding_box=[100, 100, 200, 300],
+        landmarks={'pose': [], 'face': []}
+    )
+    mock_detector.detect.return_value = mock_result
     mock_create_detector.return_value = mock_detector
     
     # Test your code
@@ -423,7 +549,7 @@ def test_guard_clause(mock_get):
    response = requests.get("/presence/simple")
    
    # Slower - use for detailed analysis
-   response = requests.get("/presence/detailed")
+   response = requests.get("/presence")
    ```
 
 2. **Configure Appropriate Timeouts**:

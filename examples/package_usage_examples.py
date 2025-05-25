@@ -10,40 +10,193 @@ Installation:
 
 Or with service features:
     pip install webcam-detection[service]
+
+RECOMMENDED: Use the HTTP service for production integrations.
 """
 
+def example_production_service_startup():
+    """RECOMMENDED: Start the production HTTP service."""
+    print("=== Production Service Startup (RECOMMENDED) ===")
+    
+    import subprocess
+    import time
+    import requests
+    
+    # Option 1: Start service directly
+    print("Option 1: Direct service startup")
+    print("Command: python webcam_http_service.py")
+    print("Service will be available at: http://localhost:8767")
+    
+    # Option 2: Programmatic startup
+    print("\nOption 2: Programmatic startup")
+    try:
+        # Start service in background
+        process = subprocess.Popen(
+            ["python", "webcam_http_service.py"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        
+        # Wait for service to be ready
+        for i in range(10):
+            try:
+                response = requests.get("http://localhost:8767/health", timeout=1.0)
+                if response.status_code == 200:
+                    print("✅ Service is ready!")
+                    break
+            except:
+                pass
+            time.sleep(0.5)
+        else:
+            print("❌ Service failed to start")
+            return
+        
+        # Test the service
+        presence_response = requests.get("http://localhost:8767/presence/simple")
+        print(f"Presence check: {presence_response.json()}")
+        
+        # Clean up
+        process.terminate()
+        
+    except Exception as e:
+        print(f"Error: {e}")
+
+def example_speaker_verification_production():
+    """RECOMMENDED: Production speaker verification integration."""
+    print("\n=== Production Speaker Verification (RECOMMENDED) ===")
+    
+    import requests
+    
+    def should_process_audio() -> bool:
+        """Production guard clause for speaker verification."""
+        try:
+            response = requests.get("http://localhost:8767/presence/simple", timeout=1.0)
+            if response.status_code == 200:
+                return response.json().get("human_present", False)
+        except requests.RequestException:
+            # Fail safe: process audio if service unavailable
+            return True
+        return False
+    
+    def speaker_verification_pipeline(audio_data):
+        """Complete speaker verification pipeline with presence guard."""
+        if not should_process_audio():
+            print("⏭️  No human detected - skipping expensive audio processing")
+            return {"status": "skipped", "reason": "no_human_present"}
+        
+        print("✅ Human detected - processing audio")
+        
+        # Your actual speaker verification code would go here:
+        # 1. Transcribe audio
+        # 2. Extract speaker features  
+        # 3. Compare against known voices
+        # 4. Return speaker ID and confidence
+        
+        # Simulated result
+        return {
+            "status": "processed",
+            "speaker_id": "user123",
+            "confidence": 0.92,
+            "text": "Hello, this is a test.",
+            "processing_time_ms": 150
+        }
+    
+    # Example usage
+    sample_audio = b"simulated_audio_data"
+    result = speaker_verification_pipeline(sample_audio)
+    print(f"Result: {result}")
+
+def example_http_service_client():
+    """HTTP service client wrapper example."""
+    print("\n=== HTTP Service Client Wrapper ===")
+    
+    import requests
+    import time
+    from typing import Dict, Any, Optional
+    
+    class WebcamDetectionClient:
+        """Client wrapper for webcam detection service."""
+        
+        def __init__(self, base_url: str = "http://localhost:8767"):
+            self.base_url = base_url
+        
+        def is_human_present(self) -> bool:
+            """Simple presence check."""
+            try:
+                response = requests.get(f"{self.base_url}/presence/simple", timeout=1.0)
+                return response.json().get("human_present", False)
+            except:
+                return False
+        
+        def get_presence_details(self) -> Optional[Dict[str, Any]]:
+            """Get detailed presence information."""
+            try:
+                response = requests.get(f"{self.base_url}/presence", timeout=2.0)
+                return response.json() if response.status_code == 200 else None
+            except:
+                return None
+        
+        def check_service_health(self) -> bool:
+            """Check if service is healthy."""
+            try:
+                response = requests.get(f"{self.base_url}/health", timeout=1.0)
+                return response.status_code == 200
+            except:
+                return False
+    
+    # Usage
+    client = WebcamDetectionClient()
+    
+    if client.check_service_health():
+        print("✅ Service is healthy")
+        print(f"Human present: {client.is_human_present()}")
+        
+        details = client.get_presence_details()
+        if details:
+            print(f"Confidence: {details.get('confidence', 0):.2f}")
+            print(f"Detection count: {details.get('detection_count', 0)}")
+    else:
+        print("❌ Service is not available")
+
 def example_basic_usage():
-    """Basic human detection usage."""
-    print("=== Basic Detection Example ===")
+    """Basic human detection usage (Direct API)."""
+    print("\n=== Basic Detection Example (Direct API) ===")
     
     from webcam_detection import create_detector
-    from webcam_detection.camera import CameraManager
-    from webcam_detection.camera.config import CameraConfig
+    import cv2
     
-    # Create camera and detector
-    camera_config = CameraConfig()
-    camera = CameraManager(camera_config)
+    # Create detector
     detector = create_detector('multimodal')
     
     try:
-        # Initialize detector (camera self-initializes)
+        # Initialize detector
         detector.initialize()
-        print("✅ Camera and detector initialized")
+        print("✅ Detector initialized")
         
-        # Get a frame and detect
-        frame = camera.get_frame()
-        if frame is not None:
+        # Get camera frame
+        cap = cv2.VideoCapture(0)
+        ret, frame = cap.read()
+        
+        if ret:
+            # Detect human in frame
             result = detector.detect(frame)
             print(f"Human present: {result.human_present}")
             print(f"Confidence: {result.confidence:.2f}")
-            print(f"Detection type: multimodal")
+            
+            # Access detailed results
+            if result.landmarks:
+                pose_landmarks = result.landmarks.get('pose', [])
+                face_landmarks = result.landmarks.get('face', [])
+                print(f"Pose landmarks: {len(pose_landmarks)}")
+                print(f"Face landmarks: {len(face_landmarks)}")
         else:
-            print("No frame available")
+            print("No camera frame available")
+        
+        cap.release()
         
     finally:
         detector.cleanup()
-        camera.cleanup()
-        print("✅ Components cleaned up")
+        print("✅ Detector cleaned up")
 
 def example_speaker_verification_guard():
     """Speaker verification guard clause example."""
@@ -128,94 +281,6 @@ def example_simple_guard_clause():
     # Cleanup when done
     detector.cleanup()
     camera.cleanup()
-
-def example_http_service_integration():
-    """HTTP service integration example (RECOMMENDED)."""
-    print("\n=== HTTP Service Integration Example ===")
-    
-    import requests
-    
-    class PresenceChecker:
-        def __init__(self, service_url="http://localhost:8767"):
-            self.service_url = service_url
-        
-        def is_human_present(self):
-            """Check presence via HTTP API (PRODUCTION PATTERN)."""
-            try:
-                response = requests.get(f"{self.service_url}/presence/simple", timeout=1.0)
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get("human_present", False)
-            except requests.RequestException as e:
-                print(f"Service unavailable: {e}")
-                return True  # Fail safe
-            return False
-        
-        def get_detailed_presence(self):
-            """Get detailed presence information."""
-            try:
-                response = requests.get(f"{self.service_url}/presence", timeout=1.0)
-                if response.status_code == 200:
-                    return response.json()
-            except requests.RequestException:
-                pass
-            return None
-    
-    # Usage (would work if service is running)
-    checker = PresenceChecker()
-    print(f"Human present: {checker.is_human_present()}")
-    print(f"Detailed info: {checker.get_detailed_presence()}")
-
-def example_speaker_verification_production():
-    """Production speaker verification integration."""
-    print("\n=== Production Speaker Verification Example ===")
-    
-    import requests
-    import time
-    
-    def should_process_audio() -> bool:
-        """Production guard clause for speaker verification."""
-        try:
-            response = requests.get("http://localhost:8767/presence/simple", timeout=1.0)
-            if response.status_code == 200:
-                return response.json().get("human_present", False)
-        except requests.RequestException:
-            # Fail safe: process audio if service unavailable
-            return True
-        return False
-    
-    def speaker_verification_pipeline(audio_stream):
-        """Example speaker verification pipeline with human presence guard."""
-        if not should_process_audio():
-            print("⏭️  No human detected - skipping audio processing")
-            return {"status": "skipped", "reason": "no_human_present"}
-        
-        print("✅ Human detected - processing audio")
-        
-        # Your actual speaker verification code would go here
-        # For example:
-        # 1. Transcribe audio
-        # 2. Extract speaker features
-        # 3. Compare against known voices
-        # 4. Return speaker ID or confidence score
-        
-        # Simulated processing
-        time.sleep(0.1)  # Simulate processing time
-        
-        return {
-            "status": "processed",
-            "speaker_id": "user_123",
-            "confidence": 0.92,
-            "transcript": "Hello, this is my voice",
-            "human_present": True
-        }
-    
-    # Example usage
-    print("Testing production pipeline...")
-    for i in range(3):
-        result = speaker_verification_pipeline(f"audio_stream_{i}")
-        print(f"Audio {i+1}: {result}")
-        time.sleep(1)
 
 def example_package_in_requirements_txt():
     """Show how to include in requirements.txt."""
@@ -315,20 +380,27 @@ def main():
     print("=" * 50)
     
     try:
-        # Run HTTP service example (most common)
-        example_http_service_integration()
-        
-        # Run speaker verification production example
+        # PRODUCTION PATTERNS (RECOMMENDED)
+        example_production_service_startup()
         example_speaker_verification_production()
+        example_http_service_client()
         
-        # Show other integration options
+        # DIRECT API PATTERNS (Alternative)
+        example_basic_usage()
+        example_speaker_verification_guard()
+        example_simple_guard_clause()
+        
+        # DEPLOYMENT PATTERNS
         example_package_in_requirements_txt()
         example_docker_integration()
         example_service_startup()
         
         print("\n" + "=" * 50)
         print("✅ All examples completed!")
-        print("💡 Recommendation: Use HTTP service integration for production")
+        print("\n🏆 RECOMMENDED PATTERN:")
+        print("   1. Start service: python webcam_http_service.py")
+        print("   2. Use HTTP client: requests.get('http://localhost:8767/presence/simple')")
+        print("   3. Implement guard clause with fail-safe behavior")
         
     except ImportError as e:
         print(f"❌ Package not installed: {e}")
