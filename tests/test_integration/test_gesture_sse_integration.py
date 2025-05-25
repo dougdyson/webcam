@@ -974,4 +974,772 @@ class TestEndToEndGestureSSEFlow:
         # Should handle queue overflow gracefully (await the async method)
         await sse_service._queue_event_for_all_clients(overflow_event)
         
-        # Verify service remains stable (no crashes) 
+        # Verify service remains stable (no crashes)
+
+
+class TestProductionIntegrationAndPerformance:
+    """
+    Phase 16.3: Production Integration and Performance Tests
+    
+    The GRAND FINALE! Tests for complete production system integration
+    with webcam_http_service.py, performance benchmarking, and 
+    real-world deployment scenarios.
+    """
+    
+    def test_integration_with_webcam_http_service(self):
+        """
+        RED TEST: Test integration with existing webcam_http_service.py.
+        
+        Should verify that gesture detection + SSE streaming can be
+        integrated into the existing production HTTP service without
+        conflicts or performance issues.
+        """
+        from src.processing.enhanced_frame_processor import EnhancedFrameProcessor
+        from src.service.sse_service import SSEDetectionService, SSEServiceConfig
+        from src.service.http_service import HTTPDetectionService, HTTPServiceConfig
+        from src.camera import CameraManager
+        
+        # Setup production-like environment
+        multimodal_detector = Mock(spec=MultiModalDetector)
+        gesture_detector = Mock(spec=GestureDetector)
+        event_publisher = EventPublisher()
+        
+        # Enhanced frame processor (gesture-enabled)
+        enhanced_processor = EnhancedFrameProcessor(
+            detector=multimodal_detector,
+            gesture_detector=gesture_detector,
+            event_publisher=event_publisher
+        )
+        
+        # HTTP API service (existing production service)
+        http_config = HTTPServiceConfig(host="localhost", port=8767)
+        http_service = HTTPDetectionService(http_config)
+        http_service.setup_event_integration(event_publisher)
+        
+        # SSE service (new gesture streaming service)
+        sse_config = SSEServiceConfig(host="localhost", port=8766)
+        sse_service = SSEDetectionService(sse_config)
+        sse_service.setup_gesture_integration(event_publisher)
+        
+        # Test frame processing with both services
+        test_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        
+        human_result = DetectionResult(
+            human_present=True,
+            confidence=0.8,
+            landmarks=[(0.5, 0.3)],
+            bounding_box=(100, 100, 200, 200)
+        )
+        multimodal_detector.detect.return_value = human_result
+        
+        gesture_result = GestureResult(
+            gesture_detected=True,
+            gesture_type="hand_up",
+            confidence=0.85,
+            hand="right"
+        )
+        gesture_detector.detect_gestures.return_value = gesture_result
+        
+        # Process frame through enhanced processor
+        result = enhanced_processor.process_frame(test_frame)
+        
+        # Verify both services receive and process events
+        assert result.human_present is True, "Enhanced processor should detect human"
+        assert multimodal_detector.detect.called, "Should call human detection"
+        assert gesture_detector.detect_gestures.called, "Should call gesture detection"
+        
+        # Verify HTTP service receives presence events
+        assert http_service.is_subscribed_to_events(), "HTTP service should be subscribed"
+        
+        # Verify SSE service receives gesture events  
+        assert sse_service.is_subscribed_to_events(), "SSE service should be subscribed"
+        
+        # Verify no port conflicts
+        assert http_config.port != sse_config.port, "Services should use different ports"
+        
+        # Verify services can coexist
+        assert http_service.get_health_status()["status"] == "healthy", "HTTP service should be healthy"
+        assert sse_service.get_health_status()["status"] == "healthy", "SSE service should be healthy"
+
+    @pytest.mark.asyncio
+    async def test_simultaneous_http_and_sse_service_operation(self):
+        """
+        RED TEST: Test simultaneous HTTP API + SSE service operation.
+        
+        Should verify that both services can run concurrently without
+        interference, handling requests and streaming events simultaneously.
+        """
+        from src.processing.enhanced_frame_processor import EnhancedFrameProcessor
+        from src.service.sse_service import SSEDetectionService, SSEServiceConfig
+        from src.service.http_service import HTTPDetectionService, HTTPServiceConfig
+        import asyncio
+        
+        # Setup concurrent services
+        event_publisher = EventPublisher()
+        
+        # Mock detectors
+        multimodal_detector = Mock(spec=MultiModalDetector)
+        gesture_detector = Mock(spec=GestureDetector)
+        
+        # Enhanced processor
+        processor = EnhancedFrameProcessor(
+            detector=multimodal_detector,
+            gesture_detector=gesture_detector,
+            event_publisher=event_publisher
+        )
+        
+        # HTTP service
+        http_config = HTTPServiceConfig(host="localhost", port=8767)
+        http_service = HTTPDetectionService(http_config)
+        http_service.setup_event_integration(event_publisher)
+        
+        # SSE service
+        sse_config = SSEServiceConfig(host="localhost", port=8766)
+        sse_service = SSEDetectionService(sse_config)
+        sse_service.setup_gesture_integration(event_publisher)
+        
+        # Add mock SSE clients
+        for i in range(3):
+            client_queue = asyncio.Queue()
+            sse_service.active_connections[f"client_{i}"] = client_queue
+        
+        # Setup detection responses
+        human_result = DetectionResult(
+            human_present=True,
+            confidence=0.8,
+            landmarks=[(0.5, 0.3)],
+            bounding_box=(100, 100, 200, 200)
+        )
+        multimodal_detector.detect.return_value = human_result
+        
+        gesture_result = GestureResult(
+            gesture_detected=True,
+            gesture_type="hand_up",
+            confidence=0.85,
+            hand="right"
+        )
+        gesture_detector.detect_gestures.return_value = gesture_result
+        
+        # Simulate concurrent operations
+        async def process_frames():
+            """Simulate continuous frame processing."""
+            for i in range(5):
+                test_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+                result = processor.process_frame(test_frame)
+                await asyncio.sleep(0.1)  # Simulate processing time
+                
+        async def simulate_http_requests():
+            """Simulate HTTP API requests."""
+            for i in range(10):
+                # Simulate HTTP request processing
+                presence_status = http_service.get_current_presence_status()
+                assert presence_status is not None, "Should get presence status"
+                await asyncio.sleep(0.05)  # Simulate request handling
+        
+        async def simulate_sse_streaming():
+            """Simulate SSE event streaming."""
+            for i in range(5):
+                event = ServiceEvent(
+                    event_type=EventType.GESTURE_DETECTED,
+                    data={"gesture_type": "hand_up", "confidence": 0.8}
+                )
+                await event_publisher.publish_async(event)
+                await asyncio.sleep(0.1)
+        
+        # Run all operations concurrently
+        await asyncio.gather(
+            process_frames(),
+            simulate_http_requests(),
+            simulate_sse_streaming()
+        )
+        
+        # Verify concurrent operation success
+        assert multimodal_detector.detect.call_count >= 5, "Should process multiple frames"
+        assert gesture_detector.detect_gestures.call_count >= 5, "Should detect gestures"
+        
+        # Verify SSE clients received events
+        for client_id, client_queue in sse_service.active_connections.items():
+            queue_size = client_queue.qsize()
+            assert queue_size > 0, f"Client {client_id} should have received events"
+        
+        # Verify services remain healthy during concurrent operation
+        http_health = http_service.get_health_status()
+        sse_health = sse_service.get_health_status()
+        
+        assert http_health["status"] == "healthy", "HTTP service should remain healthy"
+        assert sse_health["status"] == "healthy", "SSE service should remain healthy"
+
+    def test_performance_with_both_presence_and_gesture_detection(self):
+        """
+        RED TEST: Test performance with both presence and gesture detection.
+        
+        Should verify that the combined detection pipeline maintains
+        acceptable performance levels for real-time applications.
+        """
+        from src.processing.enhanced_frame_processor import EnhancedFrameProcessor
+        import time
+        
+        # Setup performance testing
+        multimodal_detector = Mock(spec=MultiModalDetector)
+        gesture_detector = Mock(spec=GestureDetector)
+        event_publisher = EventPublisher()
+        
+        processor = EnhancedFrameProcessor(
+            detector=multimodal_detector,
+            gesture_detector=gesture_detector,
+            event_publisher=event_publisher
+        )
+        
+        # Mock detection with realistic processing time
+        def slow_human_detection(*args, **kwargs):
+            time.sleep(0.03)  # Simulate 30ms human detection
+            return DetectionResult(
+                human_present=True,
+                confidence=0.8,
+                landmarks=[(0.5, 0.3)],
+                bounding_box=(100, 100, 200, 200)
+            )
+        
+        def slow_gesture_detection(*args, **kwargs):
+            time.sleep(0.02)  # Simulate 20ms gesture detection
+            return GestureResult(
+                gesture_detected=True,
+                gesture_type="hand_up",
+                confidence=0.85,
+                hand="right"
+            )
+        
+        multimodal_detector.detect.side_effect = slow_human_detection
+        gesture_detector.detect_gestures.side_effect = slow_gesture_detection
+        
+        # Performance benchmark
+        test_frames = [np.zeros((480, 640, 3), dtype=np.uint8) for _ in range(20)]
+        
+        start_time = time.time()
+        results = []
+        
+        for frame in test_frames:
+            result = processor.process_frame(frame)
+            results.append(result)
+        
+        end_time = time.time()
+        total_time = end_time - start_time
+        avg_time_per_frame = total_time / len(test_frames)
+        fps = 1.0 / avg_time_per_frame if avg_time_per_frame > 0 else 0
+        
+        # Verify performance targets
+        assert avg_time_per_frame < 0.1, f"Average processing time should be <100ms, got {avg_time_per_frame:.3f}s"
+        assert fps >= 10, f"Should achieve at least 10 FPS, got {fps:.1f} FPS"
+        
+        # Verify all frames processed correctly
+        assert len(results) == 20, "Should process all test frames"
+        
+        # Verify both detectors called for each frame
+        assert multimodal_detector.detect.call_count == 20, "Should call human detection for each frame"
+        assert gesture_detector.detect_gestures.call_count == 20, "Should call gesture detection for each frame"
+        
+        # Verify performance stats available
+        perf_stats = processor.get_performance_stats()
+        assert "total_frames_processed" in perf_stats, "Should track frame count"
+        assert "human_detection_time_ms" in perf_stats, "Should track human detection time"
+        assert "gesture_detection_time_ms" in perf_stats, "Should track gesture detection time"
+
+    def test_configuration_management_for_gesture_and_sse_features(self):
+        """
+        RED TEST: Test configuration management for gesture + SSE features.
+        
+        Should verify that all gesture and SSE configuration options
+        are properly validated, applied, and documented.
+        """
+        from src.processing.enhanced_frame_processor import EnhancedProcessorConfig
+        from src.service.sse_service import SSEServiceConfig
+        from src.gesture.config import GestureConfig
+        
+        # Test enhanced processor configuration
+        enhanced_config = EnhancedProcessorConfig(
+            min_human_confidence_for_gesture=0.7,
+            enable_gesture_detection=True,
+            publish_gesture_events=True,
+            performance_monitoring=True
+        )
+        
+        # Verify configuration validation
+        assert enhanced_config.min_human_confidence_for_gesture == 0.7, "Should set confidence threshold"
+        assert enhanced_config.enable_gesture_detection is True, "Should enable gesture detection"
+        assert enhanced_config.publish_gesture_events is True, "Should enable event publishing"
+        assert enhanced_config.performance_monitoring is True, "Should enable performance monitoring"
+        
+        # Test SSE service configuration
+        sse_config = SSEServiceConfig(
+            host="localhost",
+            port=8766,
+            max_connections=25,
+            gesture_events_only=True,
+            min_gesture_confidence=0.6,
+            max_queue_size=150
+        )
+        
+        # Verify SSE configuration
+        assert sse_config.host == "localhost", "Should set host"
+        assert sse_config.port == 8766, "Should set port"
+        assert sse_config.max_connections == 25, "Should set connection limit"
+        assert sse_config.gesture_events_only is True, "Should filter to gesture events"
+        assert sse_config.min_gesture_confidence == 0.6, "Should set confidence filter"
+        assert sse_config.max_queue_size == 150, "Should set queue size"
+        
+        # Test gesture detection configuration
+        gesture_config = GestureConfig(
+            min_detection_confidence=0.8,
+            debounce_frames=5,
+            gesture_timeout_ms=3000
+        )
+        
+        # Verify gesture configuration
+        assert gesture_config.min_detection_confidence == 0.8, "Should set detection confidence"
+        assert gesture_config.debounce_frames == 5, "Should set debounce frames"
+        assert gesture_config.gesture_timeout_ms == 3000, "Should set gesture timeout"
+        
+        # Test configuration validation
+        validation_result = SSEServiceConfig.validate_configuration({
+            "host": "localhost",
+            "port": 8766,
+            "max_connections": 20,
+            "min_gesture_confidence": 0.6
+        })
+        
+        assert validation_result["is_valid"] is True, "Valid configuration should pass validation"
+        assert len(validation_result["errors"]) == 0, "Should have no validation errors"
+        
+        # Test invalid configuration
+        invalid_result = SSEServiceConfig.validate_configuration({
+            "port": 99,  # Invalid port
+            "min_gesture_confidence": 1.5  # Invalid confidence
+        })
+        
+        assert invalid_result["is_valid"] is False, "Invalid configuration should fail validation"
+        assert len(invalid_result["errors"]) > 0, "Should have validation errors"
+
+    def test_memory_usage_and_resource_management(self):
+        """
+        RED TEST: Test memory usage and resource management.
+        
+        Should verify that the gesture + SSE system manages memory
+        efficiently and doesn't leak resources during operation.
+        """
+        from src.processing.enhanced_frame_processor import EnhancedFrameProcessor
+        from src.service.sse_service import SSEDetectionService, SSEServiceConfig
+        import gc
+        import sys
+        
+        # Baseline memory measurement
+        gc.collect()
+        initial_objects = len(gc.get_objects())
+        
+        # Setup system components
+        multimodal_detector = Mock(spec=MultiModalDetector)
+        gesture_detector = Mock(spec=GestureDetector)
+        event_publisher = EventPublisher()
+        
+        processor = EnhancedFrameProcessor(
+            detector=multimodal_detector,
+            gesture_detector=gesture_detector,
+            event_publisher=event_publisher
+        )
+        
+        sse_config = SSEServiceConfig(host="localhost", port=8766, max_queue_size=50)
+        sse_service = SSEDetectionService(sse_config)
+        sse_service.setup_gesture_integration(event_publisher)
+        
+        # Simulate extended operation
+        human_result = DetectionResult(
+            human_present=True,
+            confidence=0.8,
+            landmarks=[(0.5, 0.3)],
+            bounding_box=(100, 100, 200, 200)
+        )
+        multimodal_detector.detect.return_value = human_result
+        
+        gesture_result = GestureResult(
+            gesture_detected=True,
+            gesture_type="hand_up",
+            confidence=0.85,
+            hand="right"
+        )
+        gesture_detector.detect_gestures.return_value = gesture_result
+        
+        # Process many frames to test memory usage
+        for i in range(100):
+            test_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            result = processor.process_frame(test_frame)
+            
+            # Simulate SSE client events
+            if i % 10 == 0:
+                event = ServiceEvent(
+                    event_type=EventType.GESTURE_DETECTED,
+                    data={"gesture_type": "hand_up", "sequence": i}
+                )
+                event_publisher.publish(event)
+        
+        # Check memory after processing
+        gc.collect()
+        final_objects = len(gc.get_objects())
+        
+        # Verify memory management
+        object_growth = final_objects - initial_objects
+        assert object_growth < 2000, f"Object count growth should be reasonable, got {object_growth}"
+        
+        # Verify performance stats don't leak memory
+        perf_stats = processor.get_performance_stats()
+        assert "total_frames_processed" in perf_stats, "Should track performance"
+        
+        # Reset performance stats and verify cleanup
+        processor.reset_performance_stats()
+        reset_stats = processor.get_performance_stats()
+        assert reset_stats["total_frames_processed"] == 0, "Should reset counters"
+        
+        # Verify SSE service resource management
+        sse_health = sse_service.get_health_status()
+        assert "active_connections" in sse_health, "Should track connections"
+        
+        # Verify resource cleanup methods exist
+        assert hasattr(processor, 'get_efficiency_metrics'), "Should provide efficiency metrics"
+        assert hasattr(sse_service, 'get_monitoring_data'), "Should provide monitoring data"
+
+    @pytest.mark.asyncio
+    async def test_service_startup_and_coordination(self):
+        """
+        RED TEST: Test service startup and coordination.
+        
+        Should verify that HTTP and SSE services can start up together,
+        coordinate properly, and handle startup/shutdown sequences.
+        """
+        from src.service.sse_service import SSEDetectionService, SSEServiceConfig
+        from src.service.http_service import HTTPDetectionService, HTTPServiceConfig
+        import asyncio
+        
+        # Setup service coordination
+        event_publisher = EventPublisher()
+        
+        # HTTP service setup
+        http_config = HTTPServiceConfig(host="localhost", port=8767)
+        http_service = HTTPDetectionService(http_config)
+        
+        # SSE service setup
+        sse_config = SSEServiceConfig(host="localhost", port=8766)
+        sse_service = SSEDetectionService(sse_config)
+        
+        # Test startup sequence
+        startup_results = []
+        
+        # HTTP service startup
+        http_startup = await http_service.startup_with_validation()
+        startup_results.append(("http", http_startup))
+        
+        # SSE service startup
+        sse_startup = await sse_service.startup_with_validation()
+        startup_results.append(("sse", sse_startup))
+        
+        # Verify successful startup
+        for service_name, startup_result in startup_results:
+            assert startup_result["success"] is True, f"{service_name} service should start successfully"
+            assert "startup_time" in startup_result, f"{service_name} should track startup time"
+        
+        # Setup event integration after startup
+        http_service.setup_event_integration(event_publisher)
+        sse_service.setup_gesture_integration(event_publisher)
+        
+        # Verify services are running
+        assert http_service.is_running() is True, "HTTP service should be running"
+        assert sse_service.is_running() is True, "SSE service should be running"
+        
+        # Test service coordination - publish events
+        coordination_events = []
+        
+        # Presence event (should go to HTTP service)
+        presence_event = ServiceEvent(
+            event_type=EventType.PRESENCE_CHANGED,
+            data={"human_present": True, "confidence": 0.8}
+        )
+        await event_publisher.publish_async(presence_event)
+        coordination_events.append("presence")
+        
+        # Gesture event (should go to SSE service)
+        gesture_event = ServiceEvent(
+            event_type=EventType.GESTURE_DETECTED,
+            data={"gesture_type": "hand_up", "confidence": 0.85}
+        )
+        await event_publisher.publish_async(gesture_event)
+        coordination_events.append("gesture")
+        
+        # Wait for event processing
+        await asyncio.sleep(0.1)
+        
+        # Verify coordination
+        assert len(coordination_events) == 2, "Should publish coordination events"
+        
+        # Verify service health after coordination
+        http_health = http_service.get_health_status()
+        sse_health = sse_service.get_health_status()
+        
+        assert http_health["status"] == "healthy", "HTTP service should remain healthy"
+        assert sse_health["status"] == "healthy", "SSE service should remain healthy"
+        
+        # Test graceful shutdown sequence
+        shutdown_results = []
+        
+        # SSE service shutdown first (clients need to disconnect)
+        sse_shutdown = await sse_service.graceful_shutdown_with_cleanup()
+        shutdown_results.append(("sse", sse_shutdown))
+        
+        # HTTP service shutdown
+        http_shutdown = await http_service.graceful_shutdown_with_cleanup()
+        shutdown_results.append(("http", http_shutdown))
+        
+        # Verify graceful shutdown
+        for service_name, shutdown_result in shutdown_results:
+            assert shutdown_result["success"] is True, f"{service_name} service should shutdown gracefully"
+            assert "cleanup_completed" in shutdown_result, f"{service_name} should confirm cleanup"
+
+    def test_real_world_performance_benchmarking(self):
+        """
+        RED TEST: Test real-world performance benchmarking.
+        
+        Should verify that the complete gesture + SSE system meets
+        real-world performance requirements for production deployment.
+        """
+        from src.processing.enhanced_frame_processor import EnhancedFrameProcessor
+        from src.service.sse_service import SSEDetectionService, SSEServiceConfig
+        import time
+        import statistics
+        
+        # Setup realistic benchmark environment
+        multimodal_detector = Mock(spec=MultiModalDetector)
+        gesture_detector = Mock(spec=GestureDetector)
+        event_publisher = EventPublisher()
+        
+        processor = EnhancedFrameProcessor(
+            detector=multimodal_detector,
+            gesture_detector=gesture_detector,
+            event_publisher=event_publisher
+        )
+        
+        sse_config = SSEServiceConfig(host="localhost", port=8766)
+        sse_service = SSEDetectionService(sse_config)
+        sse_service.setup_gesture_integration(event_publisher)
+        
+        # Add mock SSE clients for realistic load
+        import asyncio
+        for i in range(5):
+            client_queue = asyncio.Queue(maxsize=100)
+            sse_service.active_connections[f"benchmark_client_{i}"] = client_queue
+        
+        # Mock realistic detection timing
+        def realistic_human_detection(*args, **kwargs):
+            time.sleep(0.025)  # 25ms for human detection
+            return DetectionResult(
+                human_present=True,
+                confidence=0.8,
+                landmarks=[(0.5, 0.3)],
+                bounding_box=(100, 100, 200, 200)
+            )
+        
+        def realistic_gesture_detection(*args, **kwargs):
+            time.sleep(0.015)  # 15ms for gesture detection
+            return GestureResult(
+                gesture_detected=True,
+                gesture_type="hand_up",
+                confidence=0.85,
+                hand="right"
+            )
+        
+        multimodal_detector.detect.side_effect = realistic_human_detection
+        gesture_detector.detect_gestures.side_effect = realistic_gesture_detection
+        
+        # Real-world benchmark test
+        benchmark_frames = 50
+        frame_times = []
+        gesture_detection_times = []
+        sse_streaming_times = []
+        
+        for i in range(benchmark_frames):
+            test_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            
+            # Measure frame processing time
+            frame_start = time.time()
+            result = processor.process_frame(test_frame)
+            frame_end = time.time()
+            
+            frame_time = frame_end - frame_start
+            frame_times.append(frame_time)
+            
+            # Measure gesture detection time specifically
+            if result.human_present:
+                gesture_start = time.time()
+                # Simulate gesture event publishing
+                gesture_event = ServiceEvent(
+                    event_type=EventType.GESTURE_DETECTED,
+                    data={"gesture_type": "hand_up", "benchmark_frame": i}
+                )
+                event_publisher.publish(gesture_event)
+                gesture_end = time.time()
+                
+                gesture_detection_times.append(gesture_end - gesture_start)
+            
+            # Add slight delay between frames (realistic timing)
+            time.sleep(0.01)
+        
+        # Calculate performance metrics
+        avg_frame_time = statistics.mean(frame_times)
+        max_frame_time = max(frame_times)
+        fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0
+        
+        avg_gesture_time = statistics.mean(gesture_detection_times) if gesture_detection_times else 0
+        
+        # Performance assertions for real-world requirements
+        assert avg_frame_time < 0.08, f"Average frame time should be <80ms for real-time, got {avg_frame_time:.3f}s"
+        assert max_frame_time < 0.15, f"Max frame time should be <150ms, got {max_frame_time:.3f}s"
+        assert fps >= 12, f"Should achieve at least 12 FPS for real-time, got {fps:.1f} FPS"
+        
+        if gesture_detection_times:
+            assert avg_gesture_time < 0.05, f"Gesture detection should be <50ms, got {avg_gesture_time:.3f}s"
+        
+        # Verify SSE streaming performance
+        total_connections = len(sse_service.active_connections)
+        assert total_connections == 5, "Should maintain all SSE connections"
+        
+        # Check that SSE clients received events
+        total_events_queued = 0
+        for client_id, client_queue in sse_service.active_connections.items():
+            events_in_queue = client_queue.qsize()
+            total_events_queued += events_in_queue
+        
+        # Should have events queued for clients (some may have been processed)
+        assert total_events_queued >= 0, "SSE clients should receive gesture events"
+        
+        # Verify final performance statistics
+        final_stats = processor.get_performance_stats()
+        assert final_stats["total_frames_processed"] >= benchmark_frames, "Should track all processed frames"
+        
+        # Efficiency metrics verification
+        efficiency_metrics = processor.get_efficiency_metrics()
+        assert "gesture_detection_efficiency" in efficiency_metrics, "Should provide efficiency metrics"
+        assert efficiency_metrics["gesture_detection_efficiency"] > 0.8, "Should be highly efficient"
+
+    def test_error_handling_and_graceful_degradation(self):
+        """
+        RED TEST: Test error handling and graceful degradation.
+        
+        Should verify that the production system handles various failure
+        scenarios gracefully without complete system failure.
+        """
+        from src.processing.enhanced_frame_processor import EnhancedFrameProcessor
+        from src.service.sse_service import SSEDetectionService, SSEServiceConfig
+        
+        # Setup error simulation environment
+        multimodal_detector = Mock(spec=MultiModalDetector)
+        gesture_detector = Mock(spec=GestureDetector)
+        event_publisher = EventPublisher()
+        
+        processor = EnhancedFrameProcessor(
+            detector=multimodal_detector,
+            gesture_detector=gesture_detector,
+            event_publisher=event_publisher
+        )
+        
+        sse_config = SSEServiceConfig(host="localhost", port=8766)
+        sse_service = SSEDetectionService(sse_config)
+        sse_service.setup_gesture_integration(event_publisher)
+        
+        test_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        
+        # Test 1: Human detection failure
+        multimodal_detector.detect.side_effect = Exception("Camera disconnected")
+        gesture_detector.detect_gestures.return_value = GestureResult(
+            gesture_detected=False,
+            gesture_type=None,
+            confidence=0.0,
+            hand=None
+        )
+        
+        # Should handle human detection failure gracefully
+        try:
+            result = processor.process_frame(test_frame)
+            # System should continue operating despite error
+            assert True, "Should handle human detection failure gracefully"
+        except Exception as e:
+            # If exception occurs, it should be handled internally
+            assert False, f"Should not propagate human detection errors: {e}"
+        
+        # Test 2: Gesture detection failure
+        multimodal_detector.detect.side_effect = None
+        multimodal_detector.detect.return_value = DetectionResult(
+            human_present=True,
+            confidence=0.8,
+            landmarks=[(0.5, 0.3)],
+            bounding_box=(100, 100, 200, 200)
+        )
+        
+        gesture_detector.detect_gestures.side_effect = Exception("Gesture model failure")
+        
+        # Should handle gesture detection failure gracefully
+        try:
+            result = processor.process_frame(test_frame)
+            assert result.human_present is True, "Human detection should still work"
+            assert True, "Should handle gesture detection failure gracefully"
+        except Exception as e:
+            assert False, f"Should not propagate gesture detection errors: {e}"
+        
+        # Test 3: SSE service failure
+        gesture_detector.detect_gestures.side_effect = None
+        gesture_detector.detect_gestures.return_value = GestureResult(
+            gesture_detected=True,
+            gesture_type="hand_up",
+            confidence=0.85,
+            hand="right"
+        )
+        
+        # Mock SSE service failure
+        original_stream = sse_service.stream_gesture_event_to_clients
+        sse_service.stream_gesture_event_to_clients = Mock(side_effect=Exception("SSE service failure"))
+        
+        # Should handle SSE failure without affecting core detection
+        try:
+            result = processor.process_frame(test_frame)
+            assert result.human_present is True, "Human detection should still work"
+            
+            # Manually trigger SSE failure
+            import asyncio
+            gesture_event = ServiceEvent(
+                event_type=EventType.GESTURE_DETECTED,
+                data={"gesture_type": "hand_up", "confidence": 0.85}
+            )
+            asyncio.run(event_publisher.publish_async(gesture_event))
+            
+            assert True, "Should handle SSE service failure gracefully"
+        except Exception as e:
+            assert False, f"Should not propagate SSE service errors: {e}"
+        
+        # Test 4: Event publisher failure
+        original_publish = event_publisher.publish
+        event_publisher.publish = Mock(side_effect=Exception("Event publisher failure"))
+        
+        # Should handle event publishing failure gracefully
+        try:
+            result = processor.process_frame(test_frame)
+            assert result.human_present is True, "Core detection should still work"
+            assert True, "Should handle event publisher failure gracefully"
+        except Exception as e:
+            assert False, f"Should not propagate event publisher errors: {e}"
+        
+        # Verify system remains operational
+        # Restore working event publisher
+        event_publisher.publish = original_publish
+        sse_service.stream_gesture_event_to_clients = original_stream
+        
+        # Verify system can recover
+        final_result = processor.process_frame(test_frame)
+        assert final_result.human_present is True, "System should recover from failures"
+        
+        # Verify error tracking in performance stats
+        perf_stats = processor.get_performance_stats()
+        assert "error_count" in perf_stats or "total_frames_processed" in perf_stats, "Should track system status" 

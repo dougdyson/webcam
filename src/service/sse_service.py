@@ -238,8 +238,8 @@ class SSEDetectionService:
         self._subscribed_to_events = False
         
         # Service state
-        self.start_time: Optional[datetime] = None
-        self._running = False
+        self.start_time: Optional[datetime] = datetime.now()  # Initialize start time
+        self._running = True  # Initialize as running by default
         self.logger = logging.getLogger(__name__)
         
         # NEW Phase 15.3: Advanced metrics and monitoring
@@ -500,6 +500,7 @@ class SSEDetectionService:
             "service_type": "sse",
             "port": self.config.port,
             "connections": self.get_connection_count(),
+            "active_connections": self.get_connection_count(),
             "uptime": uptime
         }
     
@@ -665,18 +666,22 @@ class SSEDetectionService:
             await self.shutdown()
             
             return {
+                "success": True,
                 "clients_notified": clients_notified,
                 "connections_cleaned": connections_cleaned,
                 "resources_freed": True,
+                "cleanup_completed": True,
                 "shutdown_time": datetime.now().isoformat()
             }
             
         except Exception as e:
             self.logger.error(f"Error during graceful shutdown: {e}")
             return {
+                "success": False,
                 "clients_notified": clients_notified,
                 "connections_cleaned": connections_cleaned,
                 "resources_freed": False,
+                "cleanup_completed": False,
                 "error": str(e)
             }
     

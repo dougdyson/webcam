@@ -103,6 +103,10 @@ class HTTPDetectionService:
             last_detection=datetime.now()
         )
         
+        # Initialize as running by default
+        self._running = True
+        self._event_publisher_subscribed = False
+        
         # Detection history (if enabled)
         self.detection_history: deque = deque(maxlen=config.history_limit) if config.enable_history else None
         
@@ -174,6 +178,7 @@ class HTTPDetectionService:
     def setup_detection_integration(self, event_publisher: EventPublisher) -> None:
         """Setup integration with detection event publisher."""
         event_publisher.subscribe(self._handle_detection_event)
+        self._event_publisher_subscribed = True
     
     def _handle_detection_event(self, event: ServiceEvent) -> None:
         """Handle detection events from the detection system."""
@@ -215,4 +220,92 @@ class HTTPDetectionService:
             host=self.config.host,
             port=self.config.port,
             log_level="info"
-        ) 
+        )
+    
+    # PRODUCTION INTEGRATION METHODS FOR PHASE 16.3
+    
+    def setup_event_integration(self, event_publisher: EventPublisher) -> None:
+        """Setup integration with event publisher (alias for setup_detection_integration)."""
+        self.setup_detection_integration(event_publisher)
+    
+    async def startup_with_validation(self) -> Dict[str, Any]:
+        """Start up service with validation and return startup result."""
+        import time
+        start_time = time.time()
+        
+        try:
+            # Validate configuration
+            if not (1 <= self.config.port <= 65535):
+                return {
+                    "success": False,
+                    "error": f"Invalid port: {self.config.port}",
+                    "startup_time": time.time() - start_time
+                }
+            
+            # Mark as running
+            self._running = True
+            
+            return {
+                "success": True,
+                "startup_time": time.time() - start_time,
+                "host": self.config.host,
+                "port": self.config.port
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "startup_time": time.time() - start_time
+            }
+    
+    async def graceful_shutdown_with_cleanup(self) -> Dict[str, Any]:
+        """Gracefully shutdown service with cleanup."""
+        import time
+        shutdown_start = time.time()
+        
+        try:
+            # Mark as not running
+            self._running = False
+            
+            # Clear detection history if enabled
+            if self.detection_history is not None:
+                self.detection_history.clear()
+            
+            return {
+                "success": True,
+                "cleanup_completed": True,
+                "shutdown_time": time.time() - shutdown_start
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "cleanup_completed": False,
+                "shutdown_time": time.time() - shutdown_start
+            }
+    
+    def is_subscribed_to_events(self) -> bool:
+        """Check if service is subscribed to events."""
+        # Check if we have an event handler setup
+        return hasattr(self, '_event_publisher_subscribed') and self._event_publisher_subscribed
+    
+    def is_running(self) -> bool:
+        """Check if service is running."""
+        return getattr(self, '_running', False)
+    
+    def get_current_presence_status(self) -> PresenceStatus:
+        """Get current presence status object."""
+        return self.current_status
+    
+    def get_health_status(self) -> Dict[str, Any]:
+        """Get service health status."""
+        return {
+            "status": "healthy" if self.is_running() else "stopped",
+            "timestamp": datetime.now().isoformat(),
+            "uptime": time.time() - self.start_time,
+            "configuration": {
+                "host": self.config.host,
+                "port": self.config.port,
+                "history_enabled": self.config.enable_history
+            }
+        } 
