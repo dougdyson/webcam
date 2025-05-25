@@ -307,7 +307,7 @@ WORKDIR /app
 - ✨ Multi-modal detection with 3x extended range
 - ✨ Factory pattern for extensible detector architecture
 - ✨ Service layer with HTTP/WebSocket/SSE APIs
-- ✨ Comprehensive test suite (264+ tests)
+- ✨ Comprehensive test suite (320 tests)
 - ✨ Production-ready architecture
 
 ### v1.0.0 - Initial Release
