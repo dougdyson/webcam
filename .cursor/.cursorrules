@@ -1,0 +1,100 @@
+# .cursor/rules.yaml - AI Assistant Rules for Webcam Human Detection Project
+
+# General
+- Follow **Test-Driven Development (TDD)** practices: Write unit tests for individual components and integration tests for workflows.
+- **After successfully completing a TDD cycle (Test -> Code -> Refactor -> Tests Pass) for a requirement or significant step, prompt the user that it might be a good time to commit the changes.**
+- After making changes, ALWAYS make sure to run tests to verify functionality.
+- Always look for existing code to iterate on instead of creating new code.
+- Do not drastically change the patterns before trying to iterate on existing patterns.
+- Always kill all existing related servers that may have been created in previous testing before trying to start a new server.
+- Always prefer simple solutions
+- Avoid duplication of code whenever possible, which means checking for other areas of the codebase that might already have similar code and functionality
+- Write code that takes into account the different environments: dev, test, and prod
+- You are careful to only make changes that are requested or you are confident are well understood and related to the change being requested
+- When fixing an issue or bug, do not introduce a new pattern or technology without first exhausting all options for the existing implementation. And if you finally do this, make sure to remove the old implementation afterwards so we don't have duplicate logic.
+- Keep the codebase very clean and organized.
+- Avoid writing scripts in files if possible, especially if the script is likely only to be run once.
+- Avoid having files over 200-300 lines of code. Refactor at that point.
+- Mocking data is only needed for tests, never mock data for dev or prod.
+- Never add stubbing or fake data patterns to code that affects the dev or prod environments.
+- Never overwrite .env file without first asking and confirming.
+- Focus on the areas of code relevant to the task.
+- Do not touch code that is unrelated to the task.
+- Write thorough tests for all major functionality.
+- Avoid making major changes to the patterns and architecture of how a feature works, after it has shown to work well, unless explicitly instructed.
+- Always think about what other methods and areas of code might be affected by code changes.
+
+# Core Libraries & Technologies (Current Implementation)
+- Use `opencv-python` (cv2) for camera access, video capture, and frame processing.
+- Use `mediapipe` for human presence detection (BlazePose, Face Detection, or Holistic solutions).
+- Use `numpy` for numerical operations and image data representation.
+- Use `threading` for running video capture in separate threads.
+- Use `asyncio` for asynchronous frame processing and queue management.
+- Use `queue` (Queue) for thread-safe frame buffering between capture and processing.
+- Use `argparse` for CLI argument parsing.
+- Use `python-dotenv` for managing environment variables and configuration.
+- Use `PyYAML` for loading YAML configuration files.
+
+# Alternative/Future Libraries & Technologies (For Reference)
+- Use `tensorflow` or `pytorch` for custom human detection models if needed.
+- Use `pillow` (PIL) for additional image processing capabilities.
+- Use `scikit-learn` for any machine learning utilities (smoothing, debouncing algorithms).
+- Use the standard `logging` module for application-level logging.
+- Use `streamlit` or similar frameworks if building web UI components for monitoring.
+
+# Current Architecture & Design Principles
+- Organize code into logical modules: camera, detection, processing, utils, cli.
+- The system consists of several workflows: video capture, frame processing, human detection, and presence monitoring.
+- Implement a pipeline architecture: Video Capture -> Frame Queue -> Human Detection -> Presence Decision -> Action/Logging.
+- Design pipeline stages to be decoupled, communicating via queues for asynchronous processing.
+- Configuration is managed via YAML files in the config/ directory.
+- Implement debounce/smoothing mechanisms to reduce false positives in detection.
+- Ensure robust handling of different lighting conditions and camera distances.
+
+# Future Architecture & Design Principles (For Reference)
+- Integrate with speaker verification system for multi-modal authentication.
+- Implement the **Provider Pattern** for different detection backends (MediaPipe, TensorFlow, PyTorch).
+- Consider real-time monitoring dashboards for debugging and system status.
+- Plan for integration with home automation or security systems.
+
+# Project Structure & Style
+- Maintain a clean directory structure:
+  - `src/` - Main application code
+  - `src/camera/` - Camera capture and management
+  - `src/detection/` - Human detection algorithms
+  - `src/processing/` - Frame processing and queue management
+  - `src/utils/` - Utility functions and helpers
+  - `src/cli/` - Command-line interface
+  - `config/` - Configuration files
+  - `docs/` - reference and samples
+  - `tests/` - Test files
+  - `data/` - Sample data, logs, or temporary files
+- Prioritize modularity and clear separation of concerns.
+- Use Python 3.10+ features where appropriate.
+- Write clear, concise docstrings for all public functions, classes, and modules.
+- Use type hints extensively for function signatures, variables, and class members.
+- Format Python code according to PEP 8 guidelines.
+- Use f-strings for all string formatting.
+- Group imports logically: 1. Standard library, 2. Third-party libraries, 3. Local application modules. Prefer absolute imports for local modules.
+
+# Concurrency & Asynchronous Operations
+- Use `threading` for video capture to ensure smooth frame acquisition.
+- Use `asyncio` for asynchronous frame processing to handle detection without blocking capture.
+- Implement proper queue management with `queue.Queue` for thread-safe communication.
+- Consider frame rate limiting and buffer management to prevent memory issues.
+
+# Error Handling & Testing
+- Implement robust error handling around camera access and frame processing.
+- Handle camera disconnection, permission issues, and hardware failures gracefully.
+- Structure tests logically, mirroring the source code structure in the `tests/` directory.
+- Use pytest for testing and ensure test filenames are unique across the project.
+- Mock camera inputs for testing detection algorithms.
+- Test different lighting conditions and scenarios with sample images/videos.
+
+# Configuration & Environment
+- Access all configuration values through a dedicated configuration management system.
+- Load camera settings, detection parameters, and thresholds from configuration files.
+- Store camera profiles and detection settings in `config/camera_profiles.yaml`.
+- Store detection model parameters in `config/detection_config.yaml`.
+- Use virtual environment isolation for all dependencies.
+- Ensure all processing remains local (no cloud dependencies). 
