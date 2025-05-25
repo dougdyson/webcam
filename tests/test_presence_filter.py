@@ -519,8 +519,10 @@ class TestPresenceFilterIntegration:
         mid_point = len(presence_timeline) // 2
         assert any(presence_timeline[mid_point-2:mid_point+2])
         
-        # Should eventually return to no presence
-        assert not any(presence_timeline[-3:])
+        # Should eventually return to no presence (with debouncing, may take a few frames)
+        # With debounce_frames=3, it needs 3 consecutive False inputs to transition to False
+        # The sequence ends with 3 False inputs, so it should transition to False on the final detection
+        assert not presence_timeline[-1], f"Expected final result to be False, got timeline: {presence_timeline[-5:]}"
 
     def test_presence_filter_integration_with_detection_pipeline(self):
         """Should integrate properly with detection pipeline components."""

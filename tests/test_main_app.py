@@ -202,7 +202,7 @@ class TestMainAppLifecycle:
         # Mock async methods properly
         app.frame_processor.start = AsyncMock()
         app.frame_processor.stop = AsyncMock()
-        app.camera_manager.release = Mock()
+        app.camera_manager.cleanup = Mock()
         app.detector.cleanup = Mock()
         
         # Start then shutdown
@@ -211,7 +211,7 @@ class TestMainAppLifecycle:
         
         # Should cleanup all components
         app.frame_processor.stop.assert_called()
-        app.camera_manager.release.assert_called_once()
+        app.camera_manager.cleanup.assert_called_once()
         app.detector.cleanup.assert_called_once()
         assert app.is_running is False
 
@@ -514,7 +514,7 @@ class TestMainAppIntegration:
         
         # Mock cleanup methods
         app.frame_processor.stop = AsyncMock()
-        app.camera_manager.release = Mock()
+        app.camera_manager.cleanup = Mock()
         app.detector.cleanup = Mock()
         
         # Mock error during processing
@@ -529,5 +529,5 @@ class TestMainAppIntegration:
         # Cleanup should still be called
         asyncio.run(app.shutdown())
         app.frame_processor.stop.assert_called()
-        app.camera_manager.release.assert_called()
+        app.camera_manager.cleanup.assert_called()
         app.detector.cleanup.assert_called() 
