@@ -102,92 +102,38 @@ def test_logger_manager_handles_missing_config():
 - ✅ Frame metadata and statistics tracking
 - ✅ Performance monitoring and health checks
 
-#### Cycle 2.5: Async Frame Processor
-- [ ] **Cycle 2.5 Complete**
+#### ✅ Cycle 3.2: Async Frame Processor
+- ✅ **Cycle 3.2 Complete**
 
-**RED**: Test asynchronous frame processing
-- [ ] Write failing tests for async frame processing
-```python
-@pytest.mark.asyncio
-async def test_frame_processor_processes_frames():
-    # Should process frames from queue asynchronously
-    mock_detector = Mock()
-    mock_detector.detect.return_value = DetectionResult(human_present=True)
-    
-    processor = FrameProcessor(frame_queue, mock_detector)
-    frame = np.zeros((480, 640, 3))
-    frame_queue.put_frame(frame)
-    
-    result = await processor.process_next_frame()
-    assert result.human_present is True
+**RED**: Test asynchronous frame processing ✅
+- ✅ Write failing tests for async frame processing
+- ✅ Comprehensive test coverage with 19 tests:
+  - Frame processor initialization (valid/invalid parameters)
+  - Single frame processing and empty queue handling
+  - Detection error handling and timeout scenarios
+  - Continuous and concurrent processing
+  - Start/stop lifecycle management
+  - Statistics tracking and performance monitoring
+  - Cleanup on shutdown
+  - ProcessingResult creation/validation and error handling
+  - Integration tests with real queue and high throughput scenarios
 
-@pytest.mark.asyncio
-async def test_frame_processor_handles_empty_queue():
-    # Should handle empty queue gracefully
-    processor = FrameProcessor(empty_queue, mock_detector)
-    result = await processor.process_next_frame()
-    assert result is None
-```
+**GREEN**: Implement FrameProcessor ✅
+- ✅ Create `src/processing/processor.py`
+- ✅ Implement async frame processing with configurable concurrency
+- ✅ Handle queue operations with error recovery
+- ✅ ProcessingResult dataclass with validation
+- ✅ FrameProcessorError exception handling
+- ✅ Performance monitoring and statistics tracking
+- ✅ Lifecycle management (start/stop/cleanup)
+- ✅ Verify tests pass (19/19 tests passing)
 
-**GREEN**: Implement FrameProcessor
-- [ ] Create `src/processing/processor.py`
-- [ ] Implement async frame processing
-- [ ] Handle queue operations
-- [ ] Verify tests pass
-
-**REFACTOR**: Add error handling and performance monitoring
-- [ ] Add error handling and performance monitoring
-- [ ] Ensure all tests still pass
-
-### Phase 3: Queue and Processing Infrastructure ⏳
-*Goal: Establish asynchronous frame processing*
-- [ ] **Phase 3 Complete**
-
-#### ✅ Cycle 3.1: Frame Queue  
-- ✅ Thread-safe frame queue with multiple overflow strategies
-- ✅ Frame metadata tracking with timestamps and IDs
-- ✅ Queue health monitoring and performance statistics
-- ✅ Auto-cleanup of stale frames with background worker thread
-- ✅ Frame deduplication to prevent processing identical frames
-- ✅ Batch operations for efficient bulk frame handling
-- ✅ Context manager support with proper resource cleanup
-
-#### Cycle 3.2: Async Frame Processor
-- [ ] **Cycle 3.2 Complete**
-
-**RED**: Test asynchronous frame processing
-- [ ] Write failing tests for async frame processing
-```python
-@pytest.mark.asyncio
-async def test_frame_processor_processes_frames():
-    # Should process frames from queue asynchronously
-    mock_detector = Mock()
-    mock_detector.detect.return_value = DetectionResult(human_present=True)
-    
-    processor = FrameProcessor(frame_queue, mock_detector)
-    frame = np.zeros((480, 640, 3))
-    frame_queue.put_frame(frame)
-    
-    result = await processor.process_next_frame()
-    assert result.human_present is True
-
-@pytest.mark.asyncio
-async def test_frame_processor_handles_empty_queue():
-    # Should handle empty queue gracefully
-    processor = FrameProcessor(empty_queue, mock_detector)
-    result = await processor.process_next_frame()
-    assert result is None
-```
-
-**GREEN**: Implement FrameProcessor
-- [ ] Create `src/processing/processor.py`
-- [ ] Implement async frame processing
-- [ ] Handle queue operations
-- [ ] Verify tests pass
-
-**REFACTOR**: Add error handling and performance monitoring
-- [ ] Add error handling and performance monitoring
-- [ ] Ensure all tests still pass
+**REFACTOR**: Add error handling and performance monitoring ✅
+- ✅ Add comprehensive error handling and performance monitoring
+- ✅ Enhanced async processing with timeout support
+- ✅ Statistics tracking for processed/failed/success rates
+- ✅ Integration with FrameQueue and detection system
+- ✅ Ensure all tests still pass (106 total tests passing)
 
 ### Phase 4: Human Detection ⏳
 *Goal: Implement human presence detection using MediaPipe*
@@ -670,9 +616,9 @@ Each phase is complete when:
   - [x] Cycle 2.2: Basic Camera Manager
   - [x] Cycle 2.3: Frame Capture
 
-- [ ] **Phase 3**: Queue and Processing Infrastructure
+- [✅] **Phase 3**: Queue and Processing Infrastructure
   - [x] Cycle 3.1: Frame Queue
-  - [ ] Cycle 3.2: Async Frame Processor
+  - [x] Cycle 3.2: Async Frame Processor
 
 - [ ] **Phase 4**: Human Detection
   - [ ] Cycle 4.1: Detection Result Structure
