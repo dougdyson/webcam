@@ -152,12 +152,21 @@ class MainApp:
             return
         
         try:
+            # Show startup banner if display enabled
+            if self.config.enable_display:
+                self._show_startup_banner()
+            
             # Start frame processor
             if self.frame_processor:
                 await self.frame_processor.start()
             
             self.is_running = True
             logger.info("Application started successfully")
+            
+            # Show ready message
+            if self.config.enable_display:
+                print(f"\n🚀 {self.config.detector_type.upper()} detector ready! Monitoring for human presence...")
+                print("👤 = Human detected | ❌ = No human | Press Ctrl+C to stop\n")
             
         except Exception as e:
             raise MainAppError(
@@ -188,6 +197,10 @@ class MainApp:
         """Gracefully shutdown the application with cleanup."""
         logger.info("Shutting down application...")
         
+        if self.config.enable_display:
+            print("\n\n🛑 Shutting down gracefully...")
+            print("🧹 Cleaning up components...")
+        
         try:
             # Stop processing
             await self.stop()
@@ -202,9 +215,15 @@ class MainApp:
             if self.detector:
                 self.detector.cleanup()
             
+            if self.config.enable_display:
+                print("✅ All components cleaned up successfully")
+                print("👋 Goodbye!")
+            
             logger.info("Application shutdown completed")
             
         except Exception as e:
+            if self.config.enable_display:
+                print(f"❌ Error during shutdown: {e}")
             logger.error(f"Error during shutdown: {e}")
             raise MainAppError(
                 "Failed to shutdown application cleanly",
@@ -262,12 +281,54 @@ class MainApp:
             # Update statistics
             self.frames_processed += 1
             
-            if self.frames_processed % 100 == 0:
-                logger.debug(f"Processed {self.frames_processed} frames")
+            # Live terminal output every 10 frames (about 1-3 times per second)
+            if self.frames_processed % 10 == 0:
+                self._display_live_status(detection_result)
             
         except Exception as e:
             logger.error(f"Error processing frame: {e}")
             # Continue processing despite errors
+    
+    def _display_live_status(self, detection_result) -> None:
+        """Display live detection status to terminal."""
+        if not self.config.enable_display:
+            return
+            
+        # Get current status
+        stats = self.get_statistics()
+        presence_status = self.get_presence_status()
+        current_presence = presence_status.get('human_present', False)
+        
+        # Clear line and return to beginning
+        print('\r', end='')
+        
+        # Status indicator
+        status_emoji = "👤" if current_presence else "❌"
+        status_text = "HUMAN DETECTED" if current_presence else "No Human"
+        
+        # Detection info
+        confidence = detection_result.confidence if detection_result else 0.0
+        detector_type = self.config.detector_type.upper()
+        
+        # Statistics
+        fps = stats.get('frames_per_second', 0.0)
+        total_frames = stats.get('frames_processed', 0)
+        state_changes = presence_status.get('state_changes', 0)
+        uptime = stats.get('uptime_seconds', 0)
+        
+        # Create live status line with time
+        status_line = (
+            f"{status_emoji} {status_text} | "
+            f"{detector_type} | "
+            f"Conf: {confidence:.2f} | "
+            f"FPS: {fps:.1f} | "
+            f"Frames: {total_frames} | "
+            f"Changes: {state_changes} | "
+            f"Uptime: {uptime:.0f}s"
+        )
+        
+        # Print without newline to overwrite
+        print(status_line[:79], end='', flush=True)  # Limit line length
     
     def get_statistics(self) -> Dict[str, Any]:
         """Get application statistics and performance metrics."""
@@ -328,4 +389,24 @@ class MainApp:
             f"MainApp(config={self.config}, "
             f"is_running={self.is_running}, "
             f"frames_processed={self.frames_processed})"
-        ) 
+        )
+    
+    def _show_startup_banner(self) -> None:
+        """Show startup banner and initialization status."""
+        print("=" * 70)
+        print("🎯 WEBCAM HUMAN DETECTION SYSTEM")
+        print("=" * 70)
+        print(f"🔧 Detector Type: {self.config.detector_type.upper()}")
+        print(f"📹 Camera Profile: {self.config.camera_profile}")
+        print(f"🎚️  Confidence Threshold: {self.config.detection_confidence_threshold}")
+        print(f"⚡ Max Runtime: {self.config.max_runtime_seconds or 'Unlimited'} seconds")
+        print("=" * 70)
+        print("🔄 Initializing components...")
+        
+        if self.config.detector_type == 'multimodal':
+            print("✨ Multi-modal detection: Combining pose + face detection")
+            print("📡 Extended range: Desk distance to kitchen distance (3x improvement)")
+        elif self.config.detector_type == 'mediapipe':
+            print("🎭 MediaPipe pose detection: Traditional close-range detection")
+        
+        print("⏳ Starting camera and detection systems...") 
