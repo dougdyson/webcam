@@ -71,6 +71,43 @@
 - Consider real-time monitoring dashboards for debugging and system status.
 - Plan for integration with home automation or security systems.
 
+# Service Layer Development (Current Focus)
+- **Start Simple**: Begin with HTTP API for speaker verification guard clause integration
+- **Event-Driven Architecture**: Use EventPublisher pattern for decoupled service communication
+- **Multiple Service Types**: Support WebSocket (8765), SSE (8766), and HTTP API (8767) simultaneously
+- **Service Manager Pattern**: Use DetectionServiceManager for coordinated service lifecycle
+- **Guard Clause Integration**: Prioritize simple HTTP endpoint for speaker verification: GET /presence/simple
+- **Graceful Fallbacks**: Services should fail safely (if detection unavailable, allow audio processing)
+- **Configuration-Driven**: All service settings configurable via YAML (ports, hosts, features)
+- **Resource Management**: Proper connection cleanup, heartbeat monitoring, bounded connections
+- **Error Isolation**: Service failures should not impact core detection functionality
+- **Testing Strategy**: Mock service endpoints for integration testing, avoid network dependencies in tests
+
+# Service Communication Patterns
+- **WebSocket Service**: Real-time bidirectional for interactive applications
+  - Connection management with client metadata and subscription filtering
+  - Heartbeat/ping-pong for connection health monitoring
+  - Graceful disconnect handling and automatic cleanup
+  - Error handling with automatic client removal on connection failures
+- **Server-Sent Events (SSE)**: HTTP-based streaming for MCP-like patterns
+  - StreamingResponse with proper headers (Cache-Control, Connection keep-alive)
+  - Heartbeat timeouts for connection health monitoring
+  - Async queue-based event distribution to multiple clients
+  - Client disconnection detection via request.is_disconnected()
+- **HTTP REST API**: Simple polling interface for guard clauses
+  - GET /presence (full status), /presence/simple (boolean only)
+  - GET /history (detection history), /statistics (performance metrics)
+  - GET /health (service health check)
+  - Fail-safe defaults and timeout handling for reliability
+
+# Service Integration Guidelines
+- **Event Publisher Pattern**: Central event publishing with sync/async subscriber support
+- **Service Event Types**: PRESENCE_CHANGED, DETECTION_UPDATE, CONFIDENCE_ALERT, SYSTEM_STATUS, ERROR_OCCURRED
+- **Detection Integration**: Convert DetectionResult to ServiceEvent for distribution
+- **Service Discovery**: Health endpoints for all services (/health) with connection counts
+- **CORS Configuration**: Enable cross-origin requests for web dashboard integration
+- **Port Management**: Use configurable ports with reasonable defaults (8765, 8766, 8767)
+
 # Project Structure & Style
 - Maintain a clean directory structure:
   - `src/` - Main application code

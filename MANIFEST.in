@@ -1,0 +1,26 @@
+include README.md
+include LICENSE
+include requirements.txt
+include environment.yml
+include ARCHITECTURE.md
+include TDD_PLAN.md
+include TDD_PLAN_SERVICE_LAYER.md
+include MULTIMODAL_IMPLEMENTATION_SUMMARY.md
+include PUBLISHING_GUIDE.md
+
+# Configuration files
+recursive-include config *.yaml *.yml
+
+# Documentation
+recursive-include docs *.py *.md
+
+# Tests (for development installations)
+recursive-include tests *.py
+
+# Exclude development files
+exclude .gitignore
+exclude webcam.log
+exclude *.pyc
+recursive-exclude __pycache__ *
+recursive-exclude .pytest_cache *
+recursive-exclude .benchmarks * 

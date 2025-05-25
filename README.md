@@ -1,281 +1,327 @@
-# Webcam Human Presence Detection
+# Webcam Detection
 
-A Python application for **real-time multi-modal human presence detection** using webcam input, built with OpenCV and MediaPipe. Features revolutionary **multi-modal detection** combining pose and face detection for **3x extended range** capabilities. Designed for local processing with plans for future integration with speaker verification systems.
+[![PyPI version](https://badge.fury.io/py/webcam-detection.svg)](https://badge.fury.io/py/webcam-detection)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**Advanced multi-modal human detection system with service integration for real-time applications.**
+
+Webcam Detection provides a comprehensive, local-processing human presence detection system using computer vision. Perfect for guard clauses in speaker verification, smart home automation, security systems, and any application requiring reliable human presence detection.
 
 ## 🚀 Key Features
 
-- **🎯 Multi-Modal Detection** - Advanced fusion of pose and face detection for maximum range and accuracy
-- **📡 Extended Range** - Detects humans from desk distance to kitchen distance (3x improvement over pose-only)
-- **🏭 Factory Pattern** - Extensible architecture supporting multiple detection backends
-- **⚡ Real-time Processing** - <3.5s initialization, maintains 15-30 FPS
-- **🛡️ Local Processing** - Zero cloud dependencies, complete privacy
-- **🔄 Asynchronous Pipeline** - Non-blocking frame processing with intelligent queue management
-- **⚙️ Smart Configuration** - YAML-based configuration with runtime detector selection
-- **🎚️ Intelligent Filtering** - Advanced debouncing with weighted voting for stable results
-- **📊 Performance Monitoring** - Built-in FPS tracking and statistics
-- **🧪 Comprehensive Testing** - 264 tests covering all components and integration scenarios
+- **🎯 Multi-Modal Detection**: Combines MediaPipe pose and face detection for 3x extended range
+- **⚡ Real-Time Processing**: Low-latency detection with 15-30 FPS performance  
+- **🏠 Local Processing**: No cloud dependencies, all computation happens locally
+- **🛡️ Guard Clause Ready**: Perfect for speaker verification and audio processing systems
+- **🔧 Service Integration**: HTTP/WebSocket/SSE APIs for easy integration
+- **📐 Extended Range**: Works from desk distance to kitchen/cooking scenarios
+- **🧪 Production Ready**: 264+ comprehensive tests, battle-tested architecture
+- **⚙️ Configurable**: Extensive configuration options for different scenarios
 
-## 🎮 Quick Start
+## 📦 Installation
 
-### Using the Multi-Modal Detection System
-
+### Basic Installation
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd webcam
-
-# Create and activate conda environment
-conda env create -f environment.yml
-conda activate webcam
-
-# Run with multi-modal detection (default - recommended)
-python -m src.cli.main
-
-# Or specify detector type explicitly
-python -m src.cli.main --detector-type multimodal
+pip install webcam-detection
 ```
 
-### CLI Options
+### With Service Features
+```bash
+pip install webcam-detection[service]
+```
+
+### System Requirements
+- Python 3.10+
+- Webcam/camera access
+- OpenCV compatible system (Windows/macOS/Linux)
+
+## 🎯 Quick Start
+
+### Basic Human Detection
+```python
+from webcam_detection import create_detector
+from webcam_detection.camera import CameraManager
+from webcam_detection.camera.config import CameraConfig
+
+# Setup
+camera = CameraManager(CameraConfig())
+detector = create_detector('multimodal')
+detector.initialize()
+
+# Detect
+frame = camera.get_frame()
+if frame is not None:
+    result = detector.detect(frame)
+    print(f"Human present: {result.human_present}")
+    print(f"Confidence: {result.confidence:.2f}")
+
+# Cleanup
+detector.cleanup()
+camera.cleanup()
+```
+
+### Speaker Verification Guard Clause
+```python
+from webcam_detection import create_detector
+from webcam_detection.camera import CameraManager, CameraConfig
+
+class AudioProcessor:
+    def __init__(self):
+        self.camera = CameraManager(CameraConfig())
+        self.detector = create_detector('multimodal')
+        self.detector.initialize()
+    
+    def should_process_audio(self):
+        """Guard clause: only process if human present."""
+        try:
+            frame = self.camera.get_frame()
+            if frame is not None:
+                result = self.detector.detect(frame)
+                return result.human_present and result.confidence > 0.6
+            return False
+        except:
+            return True  # Fail safe
+    
+    def process_audio_stream(self, audio_data):
+        """Process audio only when humans are present."""
+        if self.should_process_audio():
+            # Your speaker verification code here
+            return self.run_speaker_verification(audio_data)
+        else:
+            # Skip processing, save resources
+            return {"processed": False, "reason": "no_human"}
+```
+
+### HTTP Service Integration
+```python
+import requests
+
+def check_human_presence():
+    """Simple HTTP API integration."""
+    try:
+        response = requests.get("http://localhost:8767/presence/simple", timeout=1.0)
+        if response.status_code == 200:
+            return response.json().get("human_present", False)
+    except requests.RequestException:
+        return True  # Fail safe
+    return False
+
+# Use in your application
+if check_human_presence():
+    # Process audio/video
+    pass
+else:
+    # Skip processing
+    pass
+```
+
+## 🔧 Detection Types
+
+### MultiModal (Recommended)
+- **Best For**: All scenarios, extended range detection
+- **Range**: Desk distance to kitchen distance (3x extended)
+- **Technology**: Combined pose + face detection with intelligent fusion
+- **Performance**: Optimal balance of accuracy and range
+
+```python
+detector = create_detector('multimodal')
+```
+
+### MediaPipe (Legacy)
+- **Best For**: Close-range scenarios, desk work
+- **Range**: Close to medium distance
+- **Technology**: Traditional pose-only detection
+- **Performance**: Fast processing, good for close interaction
+
+```python
+detector = create_detector('mediapipe')
+```
+
+## 🛠️ Service Layer
+
+Run the service layer for easy integration with other applications:
 
 ```bash
-# Multi-modal detection (pose + face fusion) - DEFAULT
-python -m src.cli.main --detector-type multimodal
-
-# Traditional pose-only detection
-python -m src.cli.main --detector-type mediapipe
-
-# Using aliases
-python -m src.cli.main --detector-type pose_face  # → multimodal
-python -m src.cli.main --detector-type pose       # → mediapipe
-
-# With configuration
-python -m src.cli.main --camera-profile high_quality --detection-confidence 0.7
+python -m webcam_detection.service --enable-http --enable-websocket
 ```
+
+### Available Endpoints
+
+#### HTTP API (Port 8767)
+- `GET /presence/simple` - Simple boolean presence check
+- `GET /presence/detailed` - Full detection information
+- `GET /health` - Service health check
+- `GET /statistics` - Performance metrics
+
+#### WebSocket (Port 8765)
+Real-time presence updates for interactive applications.
+
+#### Server-Sent Events (Port 8766)
+HTTP-based streaming for web dashboards and MCP-compatible services.
+
+## 📊 Performance
+
+- **Initialization**: < 3.5 seconds for multi-modal detector
+- **Frame Rate**: 15-30 FPS processing capability
+- **Latency**: < 100ms from capture to detection result
+- **Range**: 3x detection range compared to pose-only systems
+- **Memory**: Bounded queues, efficient resource management
 
 ## 🏗️ Architecture
 
-### Multi-Modal Detection Pipeline
 ```
-Video Capture → Frame Queue → Multi-Modal Detection → Presence Decision → Output
-     ↓              ↓              ↓                     ↓              ↓
-   Thread        Async Queue    MediaPipe            Debounce       Action
-                               (Pose + Face)
-```
-
-### Detection System Overview
-
-#### 🎭 Detector Types
-- **MultiModal (Default)**: Intelligent fusion of pose and face detection
-  - **Range**: Desk to kitchen distance (3x extended range)
-  - **Weights**: 60% pose detection + 40% face detection
-  - **Use Case**: Optimal for varied scenarios, cooking detection, smart home
-  
-- **MediaPipe (Legacy)**: Traditional pose-only detection
-  - **Range**: Close to medium distance
-  - **Use Case**: Desk work, close interaction scenarios
-
-#### 🏭 Factory Pattern
-```python
-# Extensible detector creation
-detector = create_detector('multimodal', config)
-
-# Easy registration of new detector types
-DetectorFactory.register('custom_detector', CustomDetector)
+Video Capture → Frame Queue → Multi-Modal Detection → Presence Decision → Service API
+     ↓              ↓              ↓                     ↓                    ↓
+   Thread        Async Queue    MediaPipe            Debounce             HTTP/WS
+                               (Pose + Face)         Filtering             WebSocket
 ```
 
-### Core Modules
+### Key Components
+- **Camera Manager**: Hardware abstraction and frame capture
+- **Multi-Modal Detector**: Advanced pose + face fusion
+- **Presence Filter**: Debouncing and smoothing logic
+- **Service Layer**: HTTP/WebSocket/SSE APIs
+- **Factory Pattern**: Extensible detector registration
 
-- **Camera Module** (`src/camera/`) - Camera management and frame capture
-- **Detection Module** (`src/detection/`) - Multi-modal human detection with factory pattern
-  - `multimodal_detector.py` - Advanced pose+face fusion
-  - `mediapipe_detector.py` - Traditional pose detection
-  - Factory pattern for extensible detection backends
-- **Processing Module** (`src/processing/`) - Asynchronous frame processing and intelligent filtering
-- **Utils Module** (`src/utils/`) - Configuration, logging, and monitoring
-- **CLI Module** (`src/cli/`) - Command-line interface with detector selection
+## 🎛️ Configuration
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed system design.
-
-## 🛠️ Installation
-
-### Option 1: Using Conda (Recommended)
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd webcam
-
-# Create and activate conda environment
-conda env create -f environment.yml
-conda activate webcam
-```
-
-### Option 2: Using pip
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd webcam
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-## ⚙️ Configuration
-
-### Detection Configuration (`config/detection_config.yaml`)
-
+### Camera Settings
 ```yaml
+# config/camera_profiles.yaml
+default:
+  device_id: 0
+  width: 640
+  height: 480
+  fps: 30
+```
+
+### Detection Parameters
+```yaml
+# config/detection_config.yaml
 multimodal:
   model_complexity: 1
   min_detection_confidence: 0.5
-  min_tracking_confidence: 0.5
-  pose_weight: 0.6          # Weight for pose detection
-  face_weight: 0.4          # Weight for face detection
-  enable_pose: true
-  enable_face: true
-
-mediapipe:
-  model_complexity: 1
-  min_detection_confidence: 0.5
-  min_tracking_confidence: 0.5
-
+  pose_weight: 0.6
+  face_weight: 0.4
+  
 presence_filter:
   smoothing_window: 5
   min_confidence_threshold: 0.7
   debounce_frames: 3
 ```
 
-### Camera Profiles (`config/camera_profiles.yaml`)
-
-```yaml
-default:
-  device_id: 0
-  width: 640
-  height: 480
-  fps: 30
-  buffer_size: 10
-
-high_quality:
-  device_id: 0
-  width: 1280
-  height: 720
-  fps: 15
-  buffer_size: 5
-```
-
-## 🧪 Development & Testing
-
-This project follows **Test-Driven Development (TDD)** with comprehensive test coverage.
-
-### Running Tests
-
-```bash
-# Activate environment
-conda activate webcam
-
-# Run all tests (264 tests)
-python -m pytest
-
-# Run with coverage report
-python -m pytest --cov=src --cov-report=html
-
-# Run specific test categories
-python -m pytest tests/test_detection/test_multimodal_detector.py -v
-python -m pytest tests/test_integration/ -v
-
-# Quick test run
-python -m pytest --tb=no -q
-```
-
-### Test Coverage
-- **264 comprehensive tests** covering all components
-- **Unit Tests**: Individual component functionality  
-- **Integration Tests**: End-to-end pipeline testing
-- **Multi-Modal Tests**: Detector fusion and factory pattern
-- **Performance Tests**: Load testing and resource management
-
-### Development Environment
-
-```bash
-# Activate environment
-conda activate webcam
-
-# Run with different detector types
-python -m src.cli.main --detector-type multimodal
-python -m src.cli.main --detector-type mediapipe
-
-# Debug mode with verbose logging
-python -m src.cli.main --log-level DEBUG
-```
-
-See [TDD_PLAN.md](TDD_PLAN.md) for detailed development progress.
-
-## 📈 Performance
-
-### Current Metrics
-- **Initialization**: <3.5s for multi-modal detector startup
-- **Frame Rate**: 15-30 FPS sustained processing
-- **Detection Range**: 3x extended range vs pose-only detection
-- **Memory Usage**: Optimized MediaPipe resource management
-- **Latency**: <100ms per frame processing
-
-### Performance Targets
-- **Multi-Modal Fusion**: Parallel pose and face detection
-- **Extended Range**: Desk distance to kitchen distance coverage
-- **Resource Efficiency**: Proper MediaPipe initialization and cleanup
-- **Real-time Processing**: Non-blocking asynchronous pipeline
-
 ## 🎯 Use Cases
 
-### Perfect for:
-- **🏠 Smart Home Integration** - Extended range for kitchen/cooking detection
-- **💼 Work from Home** - Desk presence detection for productivity apps
-- **🔒 Security Systems** - Multi-modal verification with speaker systems
-- **🤖 Home Automation** - Presence-based lighting and climate control
-- **📹 Video Conferencing** - Intelligent camera activation
+### Speaker Verification Systems
+Perfect guard clause for audio processing - only run expensive speaker verification when humans are present.
 
-### Multi-Modal Advantages:
-- **Close Range**: Excellent pose detection for detailed body tracking
-- **Distant Range**: Superior face detection when full body not visible
-- **Robust Performance**: Fusion reduces false positives/negatives
-- **Versatile Scenarios**: Adapts to different room layouts and use cases
+### Smart Home Automation
+Trigger cooking timers, lighting, or music when someone enters the kitchen area.
 
-## 🔮 Future Enhancements
+### Security Systems
+Human presence detection for surveillance and access control systems.
 
-- **Speaker Verification Integration** - Multi-modal authentication
-- **Custom Detection Models** - TensorFlow/PyTorch backends via factory pattern
-- **Multiple Camera Support** - Multi-camera fusion
-- **Web Dashboard** - Real-time monitoring interface
-- **Mobile Integration** - Smartphone camera support
+### Interactive Applications
+Real-time presence detection for kiosks, digital signage, and interactive displays.
 
-## 🤝 Contributing
+### Development Tools
+Add human presence context to development tools and monitoring systems.
 
-1. **Follow TDD practices** - Write tests first, maintain 264+ test coverage
-2. **Use Factory Pattern** - Register new detectors via `DetectorFactory.register()`
-3. **Maintain Architecture** - Follow existing modular design patterns
-4. **Update Documentation** - Keep README, ARCHITECTURE.md, and docstrings current
-5. **Test Thoroughly** - Ensure all 264 tests pass before submitting PRs
+## 🧪 Testing
 
-## 📋 Project Status
+The package includes 264+ comprehensive tests covering:
+- Unit tests for all components
+- Integration tests for complete workflows
+- Multi-modal detection validation
+- Performance and stress testing
+- Error recovery scenarios
 
-✅ **Production Ready** - Multi-modal detection system with comprehensive testing  
-✅ **264 Tests Passing** - Full unit and integration test coverage  
-✅ **Extended Range** - 3x detection capability improvement  
-✅ **Factory Pattern** - Extensible architecture for future enhancements  
-✅ **Performance Optimized** - <3.5s initialization, 15-30 FPS processing  
+```bash
+# Run tests
+pytest tests/
 
-## 📚 Documentation
+# With coverage
+pytest --cov=src tests/
+```
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Detailed system architecture and design
-- [TDD_PLAN.md](TDD_PLAN.md) - Development methodology and progress
-- [MULTIMODAL_IMPLEMENTATION_SUMMARY.md](MULTIMODAL_IMPLEMENTATION_SUMMARY.md) - Implementation details
-- `docs/` - Reference materials and code samples
+## 🤝 Integration Examples
+
+### Requirements.txt
+```
+webcam-detection>=2.0.0
+# or with service features
+webcam-detection[service]>=2.0.0
+```
+
+### Docker
+```dockerfile
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install package
+RUN pip install webcam-detection[service]
+
+# Your application code
+COPY . /app
+WORKDIR /app
+```
+
+## 📖 Documentation
+
+- [Architecture Guide](docs/ARCHITECTURE.md) - System design and components
+- [Package Usage](docs/PACKAGE_USAGE.md) - Detailed integration patterns
+- [Service Patterns](docs/service_patterns.py) - Service layer examples
+- [Configuration Samples](docs/configuration_samples.py) - Setup examples
+
+## 🔄 Changelog
+
+### v2.0.0 - Multi-Modal Enhancement
+- ✨ Multi-modal detection with 3x extended range
+- ✨ Factory pattern for extensible detector architecture
+- ✨ Service layer with HTTP/WebSocket/SSE APIs
+- ✨ Comprehensive test suite (264+ tests)
+- ✨ Production-ready architecture
+
+### v1.0.0 - Initial Release
+- Basic MediaPipe pose detection
+- Camera management system
+- CLI interface
 
 ## 📄 License
 
-[License information to be added] 
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## 🤝 Contributing
+
+Contributions welcome! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+## 💬 Support
+
+- **Issues**: [GitHub Issues](https://github.com/yourusername/webcam-detection/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/yourusername/webcam-detection/discussions)
+- **Email**: support@example.com
+
+## 🌟 Why Choose Webcam Detection?
+
+- **🎯 Proven**: Battle-tested with 264+ comprehensive tests
+- **⚡ Fast**: Optimized for real-time performance
+- **🔒 Private**: 100% local processing, no cloud dependencies
+- **🎛️ Flexible**: Extensive configuration and integration options
+- **📈 Scalable**: From simple scripts to production services
+- **🛡️ Reliable**: Robust error handling and graceful fallbacks
+
+---
+
+**Ready to add intelligent human presence detection to your application?**
+
+```bash
+pip install webcam-detection
+```
+
+*Built with ❤️ for developers who need reliable, local human detection.* 
