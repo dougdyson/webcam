@@ -5,7 +5,7 @@ Core gesture detection logic for "hand up at shoulder level with palm facing cam
 """
 
 import numpy as np
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Optional
 
 
 class GestureClassifier:
@@ -34,6 +34,88 @@ class GestureClassifier:
             raise ValueError(f"shoulder_offset_threshold must be between 0.0 and 1.0, got {self.shoulder_offset_threshold}")
         if not 0.0 <= self.palm_facing_confidence <= 1.0:
             raise ValueError(f"palm_facing_confidence must be between 0.0 and 1.0, got {self.palm_facing_confidence}")
+    
+    def calculate_shoulder_reference(self, pose_landmarks) -> Optional[float]:
+        """
+        Calculate shoulder reference Y coordinate from MediaPipe pose landmarks.
+        
+        Uses the average of left and right shoulder landmarks to determine shoulder level.
+        
+        Args:
+            pose_landmarks: MediaPipe pose landmarks object (33 landmarks)
+            
+        Returns:
+            Average Y coordinate of shoulders, or None if landmarks unavailable
+        """
+        if pose_landmarks is None:
+            return None
+        
+        if not hasattr(pose_landmarks, 'landmark') or len(pose_landmarks.landmark) < 33:
+            return None
+        
+        try:
+            # MediaPipe pose landmark indices:
+            # 11 = LEFT_SHOULDER, 12 = RIGHT_SHOULDER
+            left_shoulder_y = pose_landmarks.landmark[11].y
+            right_shoulder_y = pose_landmarks.landmark[12].y
+            
+            # Return average of both shoulders
+            shoulder_reference_y = (left_shoulder_y + right_shoulder_y) / 2.0
+            return float(shoulder_reference_y)
+            
+        except (IndexError, AttributeError):
+            return None
+    
+    def is_palm_facing_camera(self, palm_normal_vector: np.ndarray) -> bool:
+        """
+        Determine if palm is facing the camera based on normal vector.
+        
+        Palm faces camera when the Z component of the normal vector is positive
+        and above the confidence threshold.
+        
+        Args:
+            palm_normal_vector: 3D normal vector of palm surface
+            
+        Returns:
+            True if palm is facing camera, False otherwise
+        """
+        if not isinstance(palm_normal_vector, np.ndarray) or palm_normal_vector.size != 3:
+            return False
+        
+        # Palm faces camera when Z component is positive and above threshold
+        z_component = palm_normal_vector[2]
+        return float(z_component) >= self.palm_facing_confidence
+    
+    def detect_hand_up_gesture_with_pose(self, hand_landmarks: List[Any], 
+                                        pose_landmarks, 
+                                        palm_normal_vector: np.ndarray) -> bool:
+        """
+        Detect hand up gesture using pose landmarks for shoulder reference.
+        
+        This integrates with existing pose detection to automatically calculate
+        shoulder reference point.
+        
+        Args:
+            hand_landmarks: List of hand landmark objects
+            pose_landmarks: MediaPipe pose landmarks object
+            palm_normal_vector: Palm normal direction vector
+            
+        Returns:
+            True if hand up gesture detected, False otherwise
+        """
+        # Calculate shoulder reference from pose data
+        shoulder_reference_y = self.calculate_shoulder_reference(pose_landmarks)
+        
+        # If no pose data available, cannot detect gesture
+        if shoulder_reference_y is None:
+            return False
+        
+        # Use existing gesture detection logic
+        return self.detect_hand_up_gesture(
+            hand_landmarks=hand_landmarks,
+            shoulder_reference_y=shoulder_reference_y,
+            palm_normal_vector=palm_normal_vector
+        )
     
     def detect_hand_up_gesture(self, hand_landmarks: List[Any], 
                               shoulder_reference_y: float, 
