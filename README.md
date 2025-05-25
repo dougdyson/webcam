@@ -319,16 +319,6 @@ WORKDIR /app
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
-## 🤝 Contributing
-
-Contributions welcome! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-## 💬 Support
-
-- **Issues**: [GitHub Issues](https://github.com/yourusername/webcam-detection/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/webcam-detection/discussions)
-- **Email**: support@example.com
-
 ## 🌟 Why Choose Webcam Detection?
 
 - **🎯 Proven**: Battle-tested with 264+ comprehensive tests
