@@ -123,7 +123,7 @@ class TestCameraManager:
     
     @patch('cv2.VideoCapture')
     def test_camera_manager_get_frame_timeout(self, mock_cv2, camera_config):
-        """Should handle frame capture timeout."""
+        """Should handle frame capture timeout by attempting reconnection and returning None."""
         mock_cap = Mock()
         mock_cap.isOpened.return_value = True
         mock_cap.get.side_effect = lambda prop: {
@@ -137,8 +137,9 @@ class TestCameraManager:
         
         manager = CameraManager(camera_config)
         
-        with pytest.raises(CameraError, match="Frame capture failed"):
-            manager.get_frame()
+        # Should attempt reconnection and return None when it fails
+        frame = manager.get_frame()
+        assert frame is None
     
     @patch('cv2.VideoCapture')
     def test_camera_manager_is_available(self, mock_cv2, camera_config):

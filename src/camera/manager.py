@@ -36,6 +36,22 @@ class CameraError(Exception):
             self.__cause__ = original_error
 
 
+class CameraReconnectionError(CameraError):
+    """Exception raised when camera reconnection fails after maximum attempts."""
+    
+    def __init__(self, message: str, attempts: int, original_error: Optional[Exception] = None):
+        """
+        Initialize CameraReconnectionError.
+        
+        Args:
+            message: Error message
+            attempts: Number of reconnection attempts made
+            original_error: Original exception that caused this error
+        """
+        super().__init__(message, original_error)
+        self.attempts = attempts
+
+
 class CameraManager:
     """
     Camera manager for handling video capture operations.
@@ -59,19 +75,32 @@ class CameraManager:
         self._cap: Optional[cv2.VideoCapture] = None
         self._is_initialized = False
         self._configuration_warnings: List[str] = []
+        self._supported_resolutions: List[Tuple[int, int]] = []
+        self._supported_formats: List[str] = []
+        
+        # Performance tracking
         self._frame_count = 0
         self._last_frame_time = 0.0
         self._fps_history: List[float] = []
-        self._supported_resolutions: List[Tuple[int, int]] = []
-        self._supported_formats: List[str] = []
+        
+        # Error recovery tracking
+        self._reconnection_attempts = 0
+        self._total_reconnection_attempts = 0
+        self._successful_reconnections = 0
+        self._failed_frames = 0
+        self._last_reconnection_time = 0.0
+        self._max_reconnection_attempts = 5
+        self._is_healthy = True
         
         logger.info(f"Initializing camera manager with config: {config}")
         
         try:
             self._initialize_camera()
             self._detect_capabilities()
+            self._is_healthy = True  # Set healthy after successful initialization
         except Exception as e:
             logger.error(f"Camera initialization failed: {e}")
+            self._is_healthy = False
             raise CameraError(f"Failed to initialize camera: {e}", e)
     
     def _initialize_camera(self) -> None:
@@ -192,38 +221,161 @@ class CameraManager:
     def is_available(self) -> bool:
         """Check if camera is available and working."""
         if not self._cap:
+            logger.debug("is_available: _cap is None")
             return False
-        return self._cap.isOpened()
+        result = self._cap.isOpened()
+        logger.debug(f"is_available: _cap.isOpened() = {result}, _cap id = {id(self._cap)}")
+        return result
     
     def get_frame(self) -> Optional[np.ndarray]:
         """
-        Capture a frame from the camera.
+        Capture a frame from the camera with automatic error recovery.
         
         Returns:
             Frame as numpy array, or None if capture fails
             
         Raises:
             CameraError: If frame capture encounters an error
+            CameraReconnectionError: If reconnection fails after max attempts
         """
-        if not self._cap or not self.is_available():
-            logger.warning("Camera not available for frame capture")
-            return None
-        
         try:
+            logger.debug(f"get_frame() called: cap={self._cap is not None}, available={self.is_available()}, healthy={self._is_healthy}")
+            
+            # Check if camera is available
+            if not self._cap or not self.is_available():
+                logger.warning("Camera not available for frame capture")
+                self._is_healthy = False
+                self._failed_frames += 1
+                
+                # Check if we should wait for backoff before attempting reconnection
+                if self._should_wait_for_backoff():
+                    return None  # Return None immediately if still in backoff period
+                
+                return self._attempt_reconnection()
+            
+            # Try to read frame
+            logger.debug("Attempting to read frame from camera")
             ret, frame = self._cap.read()
+            logger.debug(f"Frame read result: ret={ret}, frame_is_none={frame is None}")
             
             if not ret or frame is None:
-                logger.debug("Frame capture failed")
-                return None
+                logger.warning("Failed to read frame from camera")
+                self._is_healthy = False
+                self._failed_frames += 1
+                
+                # Check if we should wait for backoff before attempting reconnection
+                if self._should_wait_for_backoff():
+                    return None  # Return None immediately if still in backoff period
+                
+                return self._attempt_reconnection()
             
-            # Update performance metrics
+            # Success - update metrics and return frame
+            logger.debug("Frame read successful")
             self._update_performance_metrics()
-            
+            self._is_healthy = True
             return frame
             
         except Exception as e:
             logger.error(f"Frame capture error: {e}")
-            raise CameraError(f"Frame capture failed: {e}", e)
+            self._is_healthy = False
+            self._failed_frames += 1
+            
+            # Check if we should wait for backoff before attempting reconnection
+            if self._should_wait_for_backoff():
+                return None  # Return None immediately if still in backoff period
+            
+            return self._attempt_reconnection()
+    
+    def _should_wait_for_backoff(self) -> bool:
+        """
+        Check if we should wait before attempting another reconnection due to backoff.
+        
+        Returns:
+            True if we should wait (no reconnection attempt), False if we can attempt reconnection
+        """
+        # If we haven't attempted any reconnections yet, we can try
+        if self._reconnection_attempts == 0 or self._last_reconnection_time == 0:
+            logger.debug(f"Backoff check: No previous attempts, can reconnect")
+            return False
+        
+        # If we've exceeded max attempts, allow attempt (let the reconnection method handle the error)
+        if self._reconnection_attempts >= self._max_reconnection_attempts:
+            logger.debug(f"Backoff check: Max attempts exceeded ({self._reconnection_attempts}/{self._max_reconnection_attempts}), can reconnect")
+            return False
+        
+        # Calculate backoff delay with exponential backoff
+        elapsed = time.time() - self._last_reconnection_time
+        
+        # Exponential backoff: 0.001 * 2^attempts seconds, capped at 0.1 seconds
+        backoff_delay = min(0.001 * (2 ** self._reconnection_attempts), 0.1)
+        
+        if elapsed < backoff_delay:
+            logger.debug(f"Backoff: still waiting {backoff_delay - elapsed:.3f}s (attempts={self._reconnection_attempts}, elapsed={elapsed:.3f}s, required={backoff_delay:.3f}s)")
+            return True  # Should wait, don't attempt reconnection
+        
+        logger.debug(f"Backoff: can now reconnect (elapsed={elapsed:.3f}s >= required={backoff_delay:.3f}s)")
+        return False  # Can attempt reconnection
+    
+    def _attempt_reconnection(self) -> Optional[np.ndarray]:
+        """
+        Attempt to reconnect the camera.
+        
+        Returns:
+            Frame if reconnection succeeds and frame can be read, None if reconnection fails
+            
+        Raises:
+            CameraReconnectionError: If max reconnection attempts exceeded
+        """
+        if self._reconnection_attempts >= self._max_reconnection_attempts:
+            error_msg = f"Maximum reconnection attempts exceeded ({self._max_reconnection_attempts})"
+            logger.error(error_msg)
+            raise CameraReconnectionError(error_msg, self._reconnection_attempts)
+        
+        # Record reconnection attempt timing  
+        current_time = time.time()
+        self._reconnection_attempts += 1
+        self._total_reconnection_attempts += 1
+        self._last_reconnection_time = current_time
+        
+        logger.warning(f"Attempting camera reconnection (attempt {self._reconnection_attempts}/{self._max_reconnection_attempts})")
+        
+        try:
+            # Clean up existing connection
+            if self._cap:
+                self._cap.release()
+                self._cap = None
+            
+            # Reinitialize camera
+            self._initialize_camera()
+            
+            # Check if reconnection was successful
+            if self._cap and self._cap.isOpened():
+                self._successful_reconnections += 1
+                self._reconnection_attempts = 0  # Reset counter on success
+                self._is_healthy = True
+                logger.info("Camera reconnection successful")
+                
+                # Try to read a frame immediately after successful reconnection
+                try:
+                    ret, frame = self._cap.read()
+                    if ret and frame is not None:
+                        logger.debug("Frame read successful immediately after reconnection")
+                        self._update_performance_metrics()
+                        return frame
+                    else:
+                        logger.warning("Failed to read frame immediately after reconnection")
+                        return None
+                except Exception as e:
+                    logger.error(f"Error reading frame after reconnection: {e}")
+                    return None
+            else:
+                # Reconnection failed - return None, don't try again in this call
+                logger.warning(f"Camera reconnection attempt {self._reconnection_attempts} failed")
+                return None
+            
+        except Exception as e:
+            logger.error(f"Camera reconnection error: {e}")
+            return None
     
     def _update_performance_metrics(self) -> None:
         """Update performance tracking metrics."""
@@ -304,9 +456,22 @@ class CameraManager:
         """Get list of supported camera resolutions."""
         return self._supported_resolutions.copy()
     
+    def is_healthy(self) -> bool:
+        """Check if camera is in a healthy state."""
+        return self._is_healthy and self.is_available()
+    
+    def get_statistics(self) -> Dict[str, Any]:
+        """
+        Get camera statistics including error recovery metrics.
+        
+        Returns:
+            Dictionary containing comprehensive camera statistics
+        """
+        return self.get_performance_stats()
+    
     def get_performance_stats(self) -> Dict[str, Any]:
         """
-        Get camera performance statistics.
+        Get camera performance statistics including error recovery.
         
         Returns:
             Dictionary containing performance metrics
@@ -315,7 +480,14 @@ class CameraManager:
             'frame_count': self._frame_count,
             'fps_history_length': len(self._fps_history),
             'is_available': self.is_available(),
-            'is_initialized': self.is_initialized
+            'is_initialized': self.is_initialized,
+            'is_healthy': self.is_healthy(),
+            # Error recovery statistics
+            'reconnection_attempts': self._reconnection_attempts,
+            'total_reconnection_attempts': self._total_reconnection_attempts,
+            'successful_reconnections': self._successful_reconnections,
+            'failed_frames': self._failed_frames,
+            'max_reconnection_attempts': self._max_reconnection_attempts
         }
         
         if self._fps_history:
