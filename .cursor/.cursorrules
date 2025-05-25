@@ -23,7 +23,6 @@
 - Write thorough tests for all major functionality.
 - Avoid making major changes to the patterns and architecture of how a feature works, after it has shown to work well, unless explicitly instructed.
 - Always think about what other methods and areas of code might be affected by code changes.
-- Always append `conda activate webcam && ` to amm terminal commands
 
 # Core Libraries & Technologies (Current Implementation)
 - Use `opencv-python` (cv2) for camera access, video capture, and frame processing.
@@ -51,6 +50,8 @@
 - Configuration is managed via YAML files in the config/ directory.
 - Implement debounce/smoothing mechanisms to reduce false positives in detection.
 - Ensure robust handling of different lighting conditions and camera distances.
+- Always append `conda activate webcam && ` to amm terminal commands
+- Always check the `docs` folder first if samples or examples required
 
 # Future Architecture & Design Principles (For Reference)
 - Integrate with speaker verification system for multi-modal authentication.
