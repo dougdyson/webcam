@@ -15,11 +15,13 @@ from typing import Optional, Dict, Any
 
 from ..camera.manager import CameraManager
 from ..camera.config import CameraConfig
-from ..detection.mediapipe_detector import MediaPipeDetector
-from ..detection.base import DetectorConfig
+from ..detection.base import DetectorConfig, HumanDetector
+from ..detection import DetectorFactory, create_detector
 from ..processing.queue import FrameQueue
 from ..processing.processor import FrameProcessor
 from ..processing.filter import PresenceFilter, PresenceFilterConfig
+from ..utils.config import ConfigManager
+from ..utils.logger import LoggerManager
 
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,7 @@ class MainAppConfig:
     """Configuration for main application."""
     
     camera_profile: str = 'default'
+    detector_type: str = 'multimodal'  # New multi-modal detector by default
     detection_confidence_threshold: float = 0.5
     enable_logging: bool = True
     log_level: str = 'INFO'
@@ -60,6 +63,11 @@ class MainAppConfig:
         
         if self.max_runtime_seconds is not None and self.max_runtime_seconds <= 0:
             raise ValueError("Max runtime seconds must be positive")
+            
+        # Validate detector type
+        available_detectors = DetectorFactory.list_available()
+        if self.detector_type not in available_detectors:
+            raise ValueError(f"Detector type '{self.detector_type}' not available. Available: {available_detectors}")
 
 
 class MainApp:
@@ -82,7 +90,7 @@ class MainApp:
         
         # Component instances
         self.camera_manager: Optional[CameraManager] = None
-        self.detector: Optional[MediaPipeDetector] = None
+        self.detector: Optional[HumanDetector] = None
         self.frame_queue: Optional[FrameQueue] = None
         self.frame_processor: Optional[FrameProcessor] = None
         self.presence_filter: Optional[PresenceFilter] = None
@@ -108,7 +116,7 @@ class MainApp:
             detector_config = DetectorConfig(
                 min_detection_confidence=self.config.detection_confidence_threshold
             )
-            self.detector = MediaPipeDetector(detector_config)
+            self.detector = create_detector(self.config.detector_type, detector_config)
             # Initialize the detector
             self.detector.initialize()
             

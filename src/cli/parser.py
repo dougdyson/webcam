@@ -72,6 +72,13 @@ Examples:
         
         # Detection options
         self.parser.add_argument(
+            '--detector-type',
+            default='multimodal',
+            choices=['mediapipe', 'multimodal', 'pose', 'pose_face'],
+            help='Detection algorithm to use: multimodal (pose+face, best range), mediapipe (pose only), pose (alias for mediapipe), pose_face (alias for multimodal) (default: %(default)s)'
+        )
+        
+        self.parser.add_argument(
             '--confidence-threshold',
             type=float,
             default=0.5,
@@ -176,6 +183,7 @@ Examples:
         """
         return MainAppConfig(
             camera_profile=args.profile,
+            detector_type=args.detector_type,
             detection_confidence_threshold=args.confidence_threshold,
             log_level=args.log_level,
             log_file=args.log_file,
