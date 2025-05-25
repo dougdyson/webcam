@@ -243,19 +243,149 @@ presence_filter:
 
 ## Future Integration Points
 
-### Speaker Verification System
-- Shared presence state with multi-modal confidence scores
-- Combined authentication workflow leveraging extended detection range
-- Unified configuration management
-- Multi-modal result correlation for enhanced security
+### Service Layer Architecture (Planned)
+
+The detection system will be extended with a comprehensive service layer to expose real-time human presence detection to other applications. This service layer will support multiple communication patterns to accommodate different use cases.
+
+#### Service Communication Patterns
+
+1. **WebSocket Service** (Real-time bidirectional)
+   - **Use Case**: Interactive applications requiring immediate presence updates
+   - **Port**: 8765 (configurable)
+   - **Features**: Client subscriptions, heartbeat monitoring, connection management
+   - **Benefits**: Low latency, bidirectional communication, efficient for real-time dashboards
+
+2. **Server-Sent Events (SSE)** (Real-time server-to-client streaming)
+   - **Use Case**: MCP-compatible services, web dashboards, streaming applications
+   - **Port**: 8766 (configurable)
+   - **Features**: HTTP-based streaming, automatic reconnection, heartbeat support
+   - **Benefits**: HTTP-compatible, works through firewalls, MCP pattern similarity
+
+3. **HTTP REST API** (Simple polling interface)
+   - **Use Case**: Speaker verification guard clauses, simple integrations
+   - **Port**: 8767 (configurable)
+   - **Features**: GET /presence, /presence/simple, /history, /statistics
+   - **Benefits**: Simple integration, widely supported, perfect for guard clauses
+
+#### Service Integration Architecture
+```
+Detection Pipeline → Event Publisher → Service Layer
+                                    ├── WebSocket Service (8765)
+                                    ├── SSE Service (8766)
+                                    └── HTTP API Service (8767)
+```
+
+#### Event System Design
+
+**ServiceEvent Structure**:
+- `event_type`: PRESENCE_CHANGED, DETECTION_UPDATE, CONFIDENCE_ALERT, SYSTEM_STATUS, ERROR_OCCURRED
+- `timestamp`: ISO format timestamp
+- `data`: Detection payload (human_present, confidence, bounding_box, landmarks)
+- `source`: "webcam_detection"
+- `event_id`: Optional unique identifier
+
+**EventPublisher Pattern**:
+- Supports both synchronous and asynchronous subscribers
+- Handles multiple service types simultaneously
+- Provides error isolation between services
+
+### Speaker Verification System Integration
+
+#### Guard Clause Pattern (Primary Use Case)
+```python
+# Speaker verification guard clause example
+import requests
+
+def should_process_audio() -> bool:
+    """Check if human is present before processing audio."""
+    try:
+        response = requests.get("http://localhost:8767/presence/simple", timeout=1.0)
+        if response.status_code == 200:
+            return response.json().get("human_present", False)
+    except requests.RequestException:
+        # Fail safe: process audio if service unavailable
+        return True
+    return False
+
+# In speaker verification pipeline:
+if should_process_audio():
+    # Continue with transcription and speaker recognition
+    process_audio_stream()
+else:
+    # Skip processing, no human detected
+    logger.info("No human present, skipping audio processing")
+```
+
+#### Service Configuration
+```yaml
+service_layer:
+  enabled: true
+  websocket:
+    host: "localhost"
+    port: 8765
+    max_connections: 100
+    heartbeat_interval: 30.0
+  
+  sse:
+    host: "localhost"
+    port: 8766
+    heartbeat_interval: 30.0
+    max_connections: 100
+  
+  http:
+    host: "localhost"
+    port: 8767
+    enable_history: true
+    history_limit: 1000
+  
+  event_publishing:
+    publish_detection_updates: true
+    publish_presence_changes: true
+    publish_confidence_alerts: true
+    confidence_alert_threshold: 0.3
+```
 
 ### Extension Possibilities
+
+#### Current Roadmap
+- **Phase 1**: Simple HTTP API for guard clause integration
+- **Phase 2**: WebSocket service for real-time applications  
+- **Phase 3**: Server-Sent Events for MCP-like streaming
+- **Phase 4**: Service discovery and health monitoring
+- **Phase 5**: Gesture recognition service extensions
+
+#### Future Enhancements
 - Additional detection backends via factory pattern
 - Custom detection models integration
 - Multiple camera support with multi-modal fusion
 - Web dashboard interface with detection visualization
 - Home automation integration with cooking/kitchen detection
 - Security system integration with extended range capabilities
+- **Gesture Recognition**: Hand raise detection for voice assistant stop signals
+- **Multi-Modal Authentication**: Combined presence + speaker verification
+- **Service Discovery**: Automatic service registration and health checks
+- **Load Balancing**: Multiple detection instances for high availability
+
+#### Gesture Recognition Integration (Future)
+```python
+# Future gesture detection events
+class GestureType(Enum):
+    HAND_RAISE = "hand_raise"          # Stop voice assistant
+    WAVE = "wave"                      # Acknowledge/hello
+    POINTING = "pointing"              # Directional commands
+    THUMBS_UP = "thumbs_up"           # Confirmation gesture
+
+# Service event for gesture detection
+ServiceEvent(
+    event_type=EventType.GESTURE_DETECTED,
+    data={
+        "gesture_type": GestureType.HAND_RAISE,
+        "confidence": 0.92,
+        "hand_landmarks": [...],
+        "intent": "stop_voice_assistant"
+    }
+)
+```
 
 ## Testing Strategy
 
