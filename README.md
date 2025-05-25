@@ -17,7 +17,7 @@ Webcam Detection provides a comprehensive, local-processing human presence detec
 - **🏠 Local Processing**: No cloud dependencies, all computation happens locally
 - **🛡️ Guard Clause Ready**: Perfect for speaker verification and audio processing systems
 - **🔧 Service Integration**: HTTP/WebSocket/SSE APIs for easy integration
-- **📐 Extended Range**: Works from desk distance to kitchen/cooking scenarios
+- **📐 Extended Range**: Works from desk distance to medium distance
 - **🧪 Production Ready**: 320 comprehensive tests, battle-tested architecture
 - **⚙️ Configurable**: Extensive configuration options for different scenarios
 
