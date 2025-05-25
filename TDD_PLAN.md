@@ -294,42 +294,41 @@ def test_logger_manager_handles_missing_config():
 #### Cycle 6.1: Main Application Coordinator
 - [ ] **Cycle 6.1 Complete**
 
-**RED**: Test application lifecycle
-- [ ] Write failing tests for application lifecycle
-```python
-@patch('src.camera.manager.CameraManager')
-@patch('src.detection.mediapipe_detector.MediaPipeDetector')
-def test_main_app_initialization(mock_detector, mock_camera):
-    # Should initialize all components
-    app = MainApp(config)
-    app.initialize()
-    
-    assert app.camera_manager is not None
-    assert app.detector is not None
-    assert app.frame_processor is not None
+**RED**: Test application lifecycle ✅
+- ✅ Write failing tests for application lifecycle
+- ✅ Comprehensive test coverage with 22 tests:
+  - MainAppConfig creation, validation, and custom values
+  - MainApp initialization with defaults and custom configuration
+  - Component initialization (camera, detector, queue, processor, filter)
+  - Initialization failure handling with MainAppError exception chaining
+  - Start/stop lifecycle management with async processing
+  - Graceful shutdown with proper cleanup of all components
+  - Processing loop with timeout and runtime limits
+  - Single frame processing through complete pipeline (camera → detector → filter)
+  - Processing with no frame available and error handling
+  - Statistics tracking (frames processed, uptime, FPS, presence status)
+  - Signal handling setup and graceful shutdown triggering
+  - MainAppError exception handling with original error chaining
+  - Complete integration workflow and resource cleanup on errors
 
-@pytest.mark.asyncio
-async def test_main_app_processing_loop():
-    # Should run processing loop until stopped
-    app = MainApp(config)
-    app.initialize()
-    
-    # Run for short duration
-    await asyncio.wait_for(app.run(), timeout=1.0)
-    
-    # Should have processed some frames
-    assert app.frames_processed > 0
-```
+**GREEN**: Implement MainApp ✅
+- ✅ Create `src/cli/main.py`
+- ✅ Implement MainApp application coordinator with comprehensive integration:
+  - MainAppConfig dataclass with validation for all configuration parameters
+  - MainAppError exception with error chaining for robust error handling
+  - Component lifecycle management (camera, detector, queue, processor, filter)
+  - Async start/stop methods with proper resource initialization/cleanup
+  - Main processing loop with timeout support and frame rate limiting
+  - Single frame processing pipeline: camera → detection → filtering
+  - Statistics tracking and performance monitoring
+  - Signal handling for graceful shutdown (SIGINT, SIGTERM)
+  - Complete component integration and error recovery
+- ✅ Coordinate component lifecycle and handle graceful shutdown
+- ✅ Implement main processing loop with async frame processing
+- ✅ Verify tests pass (22/22 tests passing - 219 total tests)
 
-**GREEN**: Implement MainApp
-- [ ] Create `src/cli/main.py`
-- [ ] Coordinate component lifecycle
-- [ ] Implement main processing loop
-- [ ] Handle graceful shutdown
-- [ ] Verify tests pass
-
-**REFACTOR**: Add signal handling and cleanup
-- [ ] Add signal handling and cleanup
+**REFACTOR**: Add signal handling and cleanup ⏳
+- [ ] Add enhanced error recovery and performance monitoring
 - [ ] Ensure all tests still pass
 
 #### Cycle 6.2: CLI Interface
