@@ -9,10 +9,17 @@ This module provides service integration capabilities including:
 """
 
 from .events import ServiceEvent, EventType, EventPublisher, ServiceEventError
+from .http_service import HTTPDetectionService, HTTPServiceConfig, PresenceStatus, HTTPServiceError
 
 __all__ = [
+    # Event system
     'ServiceEvent',
     'EventType', 
     'EventPublisher',
-    'ServiceEventError'
+    'ServiceEventError',
+    # HTTP service
+    'HTTPDetectionService',
+    'HTTPServiceConfig',
+    'PresenceStatus',
+    'HTTPServiceError'
 ] 
