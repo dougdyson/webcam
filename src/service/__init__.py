@@ -1,9 +1,18 @@
 """
-Service layer for webcam detection system.
-Provides HTTP API, WebSocket, and Server-Sent Events interfaces.
+Service layer for webcam human detection.
+
+This module provides service integration capabilities including:
+- Event system for decoupled communication
+- HTTP API for simple guard clause integration
+- WebSocket service for real-time applications
+- Server-Sent Events for streaming applications
 """
 
-from .http_service import HTTPService
-from .base_service import BaseService
+from .events import ServiceEvent, EventType, EventPublisher, ServiceEventError
 
-__all__ = ['HTTPService', 'BaseService'] 
+__all__ = [
+    'ServiceEvent',
+    'EventType', 
+    'EventPublisher',
+    'ServiceEventError'
+] 
