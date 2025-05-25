@@ -18,17 +18,19 @@ webcam/
 │   │   ├── camera/               # Camera management
 │   │   ├── detection/            # Human detection (multimodal)
 │   │   ├── processing/           # Frame processing and filtering
-│   │   ├── service/              # HTTP API service layer
+│   │   ├── gesture/              # 🖐️ Gesture recognition (hand up detection)
+│   │   ├── service/              # HTTP API + SSE service layer
 │   │   ├── cli/                  # Command-line interface
 │   │   └── utils/                # Utilities and configuration
 │   │
 ├── 🧪 TESTING
-│   ├── tests/                     # 320 comprehensive tests
+│   ├── tests/                     # 414 comprehensive tests
 │   │   ├── test_camera/          # Camera system tests
 │   │   ├── test_detection/       # Detection algorithm tests
 │   │   ├── test_processing/      # Processing pipeline tests
-│   │   ├── test_service/         # Service layer tests
-│   │   └── test_integration/     # Integration tests
+│   │   ├── test_gesture/         # 🖐️ Gesture recognition tests
+│   │   ├── test_service/         # Service layer tests (HTTP + SSE)
+│   │   └── test_integration/     # Integration tests (including gesture+SSE)
 │   │
 ├── 📚 DOCUMENTATION
 │   ├── docs/                      # 📖 COMPREHENSIVE DOCUMENTATION
@@ -79,7 +81,7 @@ webcam/
 3. **`docs/PACKAGE_USAGE.md`** - Complete documentation
 4. **`examples/package_usage_examples.py`** - Quick start
 5. **`src/`** - Source code
-6. **`tests/`** - Test suite (320 tests)
+6. **`tests/`** - Test suite (414 tests)
 
 ## 🚀 Getting Started
 

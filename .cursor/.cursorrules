@@ -52,12 +52,13 @@
 - Use `streamlit` or similar frameworks if building web UI components for monitoring.
 
 # Current Architecture & Design Principles
-- Organize code into logical modules: camera, detection, processing, utils, cli.
-- The system consists of several workflows: video capture, frame processing, multi-modal human detection, and presence monitoring.
-- Implement a pipeline architecture: Video Capture -> Frame Queue -> Multi-Modal Detection -> Presence Decision -> Action/Logging.
+- Organize code into logical modules: camera, detection, processing, gesture, service, utils, cli.
+- The system consists of several workflows: video capture, frame processing, multi-modal human detection, gesture recognition, and real-time streaming.
+- Implement a pipeline architecture: Video Capture -> Frame Queue -> Multi-Modal Detection -> Presence Decision -> Gesture Detection -> SSE Streaming.
 - Design pipeline stages to be decoupled, communicating via queues for asynchronous processing.
 - **Factory Pattern**: Use DetectorFactory for extensible detector registration and creation
 - **Detector Selection**: Support runtime detector type selection via CLI and configuration
+- **Gesture Integration**: Conditional gesture detection based on human presence for performance optimization
 - Configuration is managed via YAML files in the config/ directory.
 - Implement debounce/smoothing mechanisms with weighted voting to reduce false positives in detection.
 - Ensure robust handling of different lighting conditions and camera distances.
@@ -121,7 +122,7 @@
   - `src/cli/` - Command-line interface with detector selection
   - `config/` - Configuration files
   - `docs/` - reference and samples
-  - `tests/` - Test files (320+ comprehensive tests)
+  - `tests/` - Test files (414 comprehensive tests)
     - `test_integration/` - Integration test scenarios
   - `data/` - Sample data, logs, or temporary files
 - Prioritize modularity and clear separation of concerns.
@@ -147,7 +148,7 @@
 - Use pytest for testing and ensure test filenames are unique across the project.
 - Mock camera inputs for testing detection algorithms.
 - Test different lighting conditions and scenarios with sample images/videos.
-- **Comprehensive Testing**: Maintain 320+ tests covering all components and integration scenarios
+- **Comprehensive Testing**: Maintain 414 tests covering all components and integration scenarios
 - **Test Categories**: Unit tests, integration tests, multi-modal detection tests, CLI tests
 - **Test Isolation**: Use proper mocking to avoid pytest interference with SystemExit and similar issues
 - **Factory Pattern Testing**: Test detector registration, creation, and type validation
@@ -180,4 +181,24 @@
 - **Implementation Summaries**: Document major enhancements in dedicated files
 - **Clean Sample Removal**: Remove debug/test files that are no longer needed
 - **Test Documentation**: Document test coverage and categories
-- **Performance Metrics**: Document initialization times and detection capabilities 
+- **Performance Metrics**: Document initialization times and detection capabilities
+
+# Gesture Recognition Development (Implemented)
+- **Gesture Detection**: Hand up at shoulder level with palm facing camera detection
+- **Performance First**: Gesture detection only runs when human presence confirmed (conditional processing)
+- **SSE Integration**: Real-time gesture event streaming via Server-Sent Events on port 8766
+- **Event System**: GESTURE_DETECTED, GESTURE_LOST, GESTURE_CONFIDENCE_UPDATE event types
+- **MediaPipe Hands**: Integration with existing pose detection for shoulder reference
+- **Debouncing**: Smart gesture debouncing to prevent false positive triggers
+- **Resource Sharing**: Efficient reuse of pose landmarks for gesture analysis
+- **Configuration-Driven**: Gesture thresholds, confidence levels, and timing configurable
+
+# SSE Service Patterns (Implemented)
+- **Real-time Streaming**: Server-Sent Events for gesture event distribution
+- **Multiple Clients**: Support 10+ simultaneous SSE connections with client management
+- **Event Filtering**: Gesture-specific event filtering and client subscriptions
+- **Connection Management**: Automatic client cleanup, heartbeat monitoring, graceful disconnection
+- **CORS Integration**: Cross-origin support for web dashboard integration
+- **Error Isolation**: SSE service failures should not affect core detection functionality
+- **Async Queue Management**: Non-blocking event distribution to multiple clients
+- **Performance Monitoring**: Track SSE service health, connection counts, and event latency 
