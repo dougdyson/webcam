@@ -8,7 +8,7 @@ to web dashboards and other real-time applications.
 import asyncio
 import logging
 import json
-from typing import Dict, Set, Optional, Any
+from typing import Dict, Set, Optional, Any, List
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 
@@ -26,17 +26,22 @@ class SSEServiceConfig:
     host: str = "localhost"
     port: int = 8766
     max_connections: int = 20
-    heartbeat_interval: float = 30.0  # seconds
-    connection_timeout: float = 60.0  # seconds
+    heartbeat_interval: float = 30.0
+    connection_timeout: float = 60.0
+    
+    # NEW: Event filtering configuration
+    gesture_events_only: bool = True
+    include_confidence_updates: bool = True
+    min_gesture_confidence: float = 0.6
     
     def __post_init__(self):
-        """Validate configuration parameters."""
-        if self.port <= 0 or self.port > 65535:
-            raise ValueError("Port must be between 1 and 65535")
-        if self.max_connections < 0:
-            raise ValueError("Max connections cannot be negative")
+        """Validate configuration values."""
+        if not 0.0 <= self.min_gesture_confidence <= 1.0:
+            raise ValueError("min_gesture_confidence must be between 0.0 and 1.0")
+        if self.max_connections <= 0:
+            raise ValueError("max_connections must be positive")
         if self.heartbeat_interval <= 0:
-            raise ValueError("Heartbeat interval must be positive")
+            raise ValueError("heartbeat_interval must be positive")
 
 
 class SSEDetectionService:
@@ -47,41 +52,27 @@ class SSEDetectionService:
     with connection management, heartbeat, and CORS support.
     """
     
-    def __init__(self, host: str = "localhost", port: int = 8766, 
-                 config: Optional[SSEServiceConfig] = None,
-                 heartbeat_interval: float = 30.0):
-        """
-        Initialize SSE service.
+    def __init__(self, config: Optional[SSEServiceConfig] = None):
+        """Initialize SSE service."""
+        self.config = config or SSEServiceConfig()
+        self.app = FastAPI(title="SSE Detection Service")
+        self.active_connections: Dict[str, asyncio.Queue] = {}
+        self.connection_metadata: Dict[str, Dict[str, Any]] = {}
+        self.heartbeat_tasks: Dict[str, asyncio.Task] = {}
         
-        Args:
-            host: Host to bind to
-            port: Port to bind to  
-            config: Service configuration
-            heartbeat_interval: Heartbeat interval in seconds
-        """
-        if config:
-            self.host = config.host
-            self.port = config.port
-            self.max_connections = config.max_connections
-            self.heartbeat_interval = config.heartbeat_interval
-        else:
-            self.host = host
-            self.port = port
-            self.max_connections = 20
-            self.heartbeat_interval = heartbeat_interval
+        # NEW: Event Publisher integration
+        self._event_publisher = None
+        self._subscription_id = None
+        self._subscribed_to_events = False
         
         # Service state
-        self.app = FastAPI(title="Webcam Detection SSE Service")
-        self.active_connections: Dict[str, asyncio.Queue] = {}
-        self.heartbeat_tasks: Dict[str, asyncio.Task] = {}
         self.start_time: Optional[datetime] = None
         self._running = False
+        self.logger = logging.getLogger(__name__)
         
-        # Setup middleware and routes
         self._setup_cors()
         self._setup_routes()
-        
-        self.logger = logging.getLogger(__name__)
+        self._setup_health_endpoints()
     
     def _setup_cors(self):
         """Setup CORS middleware for web dashboard integration."""
@@ -102,11 +93,6 @@ class SSEDetectionService:
         async def gesture_events_stream(client_id: str, request: Request):
             """SSE endpoint for gesture event streaming."""
             return await self._handle_sse_connection(client_id, request)
-        
-        @self.app.get("/health")
-        async def health():
-            """Health check endpoint."""
-            return self.get_health_status()
     
     async def _handle_sse_connection(self, client_id: str, request: Request) -> StreamingResponse:
         """Handle SSE connection for a client."""
@@ -159,7 +145,7 @@ class SSEDetectionService:
     
     async def add_client_connection(self, client_id: str) -> None:
         """Add a client connection."""
-        if len(self.active_connections) >= self.max_connections:
+        if len(self.active_connections) >= self.config.max_connections:
             raise HTTPException(status_code=429, detail="Too many connections")
         
         self.active_connections[client_id] = asyncio.Queue()
@@ -217,7 +203,7 @@ class SSEDetectionService:
         async def heartbeat_task():
             while client_id in self.active_connections:
                 try:
-                    await asyncio.sleep(self.heartbeat_interval)
+                    await asyncio.sleep(self.config.heartbeat_interval)
                     if client_id in self.active_connections:
                         queue = self.active_connections[client_id]
                         await queue.put("data: heartbeat\n\n")
@@ -255,7 +241,7 @@ class SSEDetectionService:
         return {
             "status": "healthy" if self._running else "stopped",
             "service_type": "sse",
-            "port": self.port,
+            "port": self.config.port,
             "connections": len(self.active_connections),
             "uptime": uptime_seconds
         }
@@ -264,7 +250,7 @@ class SSEDetectionService:
         """Start the SSE service."""
         self.start_time = datetime.now()
         self._running = True
-        self.logger.info(f"SSE service started on {self.host}:{self.port}")
+        self.logger.info(f"SSE service started on {self.config.host}:{self.config.port}")
     
     async def shutdown(self) -> None:
         """Gracefully shutdown the SSE service."""
@@ -279,3 +265,119 @@ class SSEDetectionService:
     def is_running(self) -> bool:
         """Check if service is running."""
         return self._running 
+
+    # NEW: Event Publisher Integration Methods
+    async def subscribe_to_events(self, event_publisher: EventPublisher) -> str:
+        """Subscribe to EventPublisher for gesture events."""
+        self._event_publisher = event_publisher
+        
+        # Subscribe to async events (gesture events are published async)
+        event_publisher.subscribe_async(self._handle_gesture_event)
+        self._subscribed_to_events = True
+        
+        # Generate a subscription ID for tracking
+        subscription_id = f"sse_service_{id(self)}"
+        self._subscription_id = subscription_id
+        
+        logging.info(f"SSE service subscribed to events with ID: {subscription_id}")
+        return subscription_id
+    
+    def is_subscribed_to_events(self) -> bool:
+        """Check if service is subscribed to events."""
+        return self._subscribed_to_events
+    
+    async def _handle_gesture_event(self, event: ServiceEvent):
+        """Handle gesture events from EventPublisher."""
+        try:
+            # Filter events based on configuration
+            if self.should_stream_event(event):
+                await self.stream_gesture_event_to_clients(event)
+        except Exception as e:
+            logging.error(f"Error handling gesture event: {e}")
+    
+    # NEW: Event Filtering Methods
+    def get_filtered_event_types(self) -> List[EventType]:
+        """Get list of event types to stream based on configuration."""
+        if self.config.gesture_events_only:
+            gesture_types = [
+                EventType.GESTURE_DETECTED,
+                EventType.GESTURE_LOST
+            ]
+            
+            if self.config.include_confidence_updates:
+                gesture_types.append(EventType.GESTURE_CONFIDENCE_UPDATE)
+            
+            return gesture_types
+        else:
+            # If not gesture-only, include all event types
+            return list(EventType)
+    
+    def should_stream_event(self, event: ServiceEvent) -> bool:
+        """Determine if event should be streamed to clients."""
+        # Check event type filter
+        filtered_types = self.get_filtered_event_types()
+        if event.event_type not in filtered_types:
+            return False
+        
+        # Check confidence threshold for gesture events
+        if event.event_type in [EventType.GESTURE_DETECTED, EventType.GESTURE_CONFIDENCE_UPDATE]:
+            confidence = event.data.get("confidence", 1.0)
+            if confidence < self.config.min_gesture_confidence:
+                return False
+        
+        return True
+    
+    # NEW: Gesture Event Streaming Methods
+    async def stream_gesture_event_to_clients(self, event: ServiceEvent):
+        """Stream gesture event to all connected clients."""
+        if not self.active_connections:
+            return
+        
+        # IMPORTANT: Check if event should be streamed before converting and sending
+        if not self.should_stream_event(event):
+            return
+        
+        # Convert event to SSE format
+        sse_message = self._convert_event_to_sse_format(event)
+        
+        # Stream to all active clients
+        disconnected_clients = []
+        
+        for client_id, client_queue in self.active_connections.items():
+            try:
+                client_queue.put_nowait(sse_message)
+            except asyncio.QueueFull:
+                logging.warning(f"Queue full for client {client_id}, dropping event")
+            except Exception as e:
+                logging.error(f"Error streaming to client {client_id}: {e}")
+                disconnected_clients.append(client_id)
+        
+        # Clean up disconnected clients
+        for client_id in disconnected_clients:
+            await self.remove_client_connection(client_id)
+    
+    def _convert_event_to_sse_format(self, event: ServiceEvent) -> str:
+        """Convert ServiceEvent to SSE message format."""
+        # Map event types to SSE event names
+        sse_event_name = event.event_type.value.replace("_", "_")
+        
+        # Create SSE message
+        sse_data = {
+            "event_type": event.event_type.value,
+            "timestamp": event.timestamp.isoformat(),
+            "data": event.data,
+            "source": event.source
+        }
+        
+        if event.event_id:
+            sse_data["event_id"] = event.event_id
+        
+        return f"event: {sse_event_name}\ndata: {json.dumps(sse_data)}\n\n"
+
+    def _setup_health_endpoints(self):
+        """Setup health check endpoints."""
+        
+        @self.app.get("/health")
+        async def health():
+            """Health check endpoint."""
+            return self.get_health_status() 

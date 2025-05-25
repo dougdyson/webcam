@@ -26,13 +26,14 @@ class TestSSEServiceCore:
         
         Should create SSEDetectionService with proper FastAPI app and port configuration.
         """
-        from src.service.sse_service import SSEDetectionService
+        from src.service.sse_service import SSEDetectionService, SSEServiceConfig
         
-        # Test service creation
-        service = SSEDetectionService(host="localhost", port=8766)
+        # Test service creation with config
+        config = SSEServiceConfig(host="localhost", port=8766)
+        service = SSEDetectionService(config=config)
         
-        assert service.host == "localhost", "Should set correct host"
-        assert service.port == 8766, "Should set correct port"
+        assert service.config.host == "localhost", "Should set correct host"
+        assert service.config.port == 8766, "Should set correct port"
         assert isinstance(service.app, FastAPI), "Should create FastAPI app"
         assert hasattr(service, 'active_connections'), "Should have connection tracking"
     
@@ -160,9 +161,11 @@ class TestSSEServiceCore:
         
         Should send periodic heartbeat messages to keep connections alive.
         """
-        from src.service.sse_service import SSEDetectionService
+        from src.service.sse_service import SSEDetectionService, SSEServiceConfig
         
-        service = SSEDetectionService(heartbeat_interval=1.0)  # 1 second for testing
+        # Create service with custom heartbeat interval for testing
+        config = SSEServiceConfig(heartbeat_interval=1.0)  # 1 second for testing
+        service = SSEDetectionService(config=config)
         client_id = "client_heartbeat"
         
         # Add client connection first so queue exists
@@ -264,15 +267,21 @@ class TestSSEServiceCore:
         assert config.max_connections == 20, "Should have default max connections"
         assert config.heartbeat_interval == 30.0, "Should have default heartbeat interval"
         
-        # Test configuration validation
+        # Test configuration validation - invalid confidence values should raise ValueError
         with pytest.raises(ValueError):
-            SSEServiceConfig(port=0)  # Invalid port
+            SSEServiceConfig(min_gesture_confidence=1.5)  # Invalid confidence > 1.0
         
         with pytest.raises(ValueError):
-            SSEServiceConfig(max_connections=-1)  # Invalid max connections
+            SSEServiceConfig(min_gesture_confidence=-0.1)  # Invalid confidence < 0.0
+        
+        with pytest.raises(ValueError):
+            SSEServiceConfig(max_connections=0)  # Invalid max connections
+        
+        with pytest.raises(ValueError):
+            SSEServiceConfig(heartbeat_interval=0)  # Invalid heartbeat interval
         
         # Test service creation with config
         service = SSEDetectionService(config=config)
         
-        assert service.host == config.host, "Should use config host"
-        assert service.port == config.port, "Should use config port" 
+        assert service.config.host == config.host, "Should use config host"
+        assert service.config.port == config.port, "Should use config port" 
