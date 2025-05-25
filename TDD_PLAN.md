@@ -88,40 +88,86 @@ def test_logger_manager_handles_missing_config():
 - ✅ Camera capability detection
 - ✅ Performance monitoring and statistics
 
-#### Cycle 2.3: Frame Capture
-- [ ] **Cycle 2.3 Complete**
+### ✅ Cycle 2.3: Frame Capture
+- ✅ Frame capture functionality with validation
+- ✅ Frame preprocessing and format conversion
+- ✅ Rate limiting and performance monitoring
+- ✅ Synchronous and threaded capture modes
+- ✅ Error handling and recovery mechanisms
 
-**RED**: Test frame capture functionality
-- [ ] Write failing tests for frame capture
+#### Cycle 2.4: Frame Queue
+- [ ] **Cycle 2.4 Complete**
+
+**RED**: Test thread-safe frame queue
+- [ ] Write failing tests for frame queue
 ```python
-@patch('cv2.VideoCapture')
-def test_frame_capture_reads_frame(mock_cv2):
-    # Should capture and return frame
-    mock_frame = np.zeros((480, 640, 3), dtype=np.uint8)
-    mock_cv2.return_value.read.return_value = (True, mock_frame)
+def test_frame_queue_basic_operations():
+    # Should support put/get operations
+    queue = FrameQueue(max_size=5)
+    frame = np.zeros((480, 640, 3))
     
-    capture = FrameCapture(camera_manager)
-    frame = capture.get_frame()
-    assert frame is not None
-    assert frame.shape == (480, 640, 3)
+    queue.put_frame(frame)
+    retrieved_frame = queue.get_frame()
+    assert np.array_equal(frame, retrieved_frame)
 
-def test_frame_capture_handles_read_failure(mock_cv2):
-    # Should handle failed frame reads
-    mock_cv2.return_value.read.return_value = (False, None)
+def test_frame_queue_overflow_handling():
+    # Should handle queue overflow (drop oldest)
+    queue = FrameQueue(max_size=2)
+    frame1, frame2, frame3 = [np.ones((480, 640, 3)) * i for i in range(3)]
     
-    capture = FrameCapture(camera_manager)
-    frame = capture.get_frame()
-    assert frame is None
+    queue.put_frame(frame1)
+    queue.put_frame(frame2)
+    queue.put_frame(frame3)  # Should drop frame1
+    
+    assert queue.size() == 2
+    assert not np.array_equal(queue.get_frame(), frame1)
 ```
 
-**GREEN**: Implement FrameCapture class
-- [ ] Create `src/camera/capture.py`
-- [ ] Implement synchronous frame reading
-- [ ] Handle read failures
+**GREEN**: Implement FrameQueue
+- [ ] Create `src/processing/queue.py`
+- [ ] Use `queue.Queue` with size limits
+- [ ] Implement overflow handling
 - [ ] Verify tests pass
 
-**REFACTOR**: Add frame preprocessing and validation
-- [ ] Add frame preprocessing and validation
+**REFACTOR**: Add queue statistics and monitoring
+- [ ] Add queue statistics and monitoring
+- [ ] Ensure all tests still pass
+
+#### Cycle 2.5: Async Frame Processor
+- [ ] **Cycle 2.5 Complete**
+
+**RED**: Test asynchronous frame processing
+- [ ] Write failing tests for async frame processing
+```python
+@pytest.mark.asyncio
+async def test_frame_processor_processes_frames():
+    # Should process frames from queue asynchronously
+    mock_detector = Mock()
+    mock_detector.detect.return_value = DetectionResult(human_present=True)
+    
+    processor = FrameProcessor(frame_queue, mock_detector)
+    frame = np.zeros((480, 640, 3))
+    frame_queue.put_frame(frame)
+    
+    result = await processor.process_next_frame()
+    assert result.human_present is True
+
+@pytest.mark.asyncio
+async def test_frame_processor_handles_empty_queue():
+    # Should handle empty queue gracefully
+    processor = FrameProcessor(empty_queue, mock_detector)
+    result = await processor.process_next_frame()
+    assert result is None
+```
+
+**GREEN**: Implement FrameProcessor
+- [ ] Create `src/processing/processor.py`
+- [ ] Implement async frame processing
+- [ ] Handle queue operations
+- [ ] Verify tests pass
+
+**REFACTOR**: Add error handling and performance monitoring
+- [ ] Add error handling and performance monitoring
 - [ ] Ensure all tests still pass
 
 ### Phase 3: Queue and Processing Infrastructure ⏳
@@ -682,7 +728,7 @@ Each phase is complete when:
 - [ ] **Phase 2**: Camera System (Core Foundation)
   - [x] Cycle 2.1: Camera Configuration
   - [x] Cycle 2.2: Basic Camera Manager
-  - [ ] Cycle 2.3: Frame Capture
+  - [x] Cycle 2.3: Frame Capture
 
 - [ ] **Phase 3**: Queue and Processing Infrastructure
   - [ ] Cycle 3.1: Frame Queue
