@@ -18,7 +18,7 @@ Webcam Detection provides a comprehensive, local-processing human presence detec
 - **🛡️ Guard Clause Ready**: Perfect for speaker verification and audio processing systems
 - **🔧 Service Integration**: HTTP/WebSocket/SSE APIs for easy integration
 - **📐 Extended Range**: Works from desk distance to kitchen/cooking scenarios
-- **🧪 Production Ready**: 264+ comprehensive tests, battle-tested architecture
+- **🧪 Production Ready**: 320 comprehensive tests, battle-tested architecture
 - **⚙️ Configurable**: Extensive configuration options for different scenarios
 
 ## 📦 Installation
@@ -321,7 +321,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🌟 Why Choose Webcam Detection?
 
-- **🎯 Proven**: Battle-tested with 264+ comprehensive tests
+- **🎯 Proven**: Battle-tested with 320 comprehensive tests
 - **⚡ Fast**: Optimized for real-time performance
 - **🔒 Private**: 100% local processing, no cloud dependencies
 - **🎛️ Flexible**: Extensive configuration and integration options
