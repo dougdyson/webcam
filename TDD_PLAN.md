@@ -72,76 +72,21 @@ def test_logger_manager_handles_missing_config():
 - [x] Add thread-safe logger management
 - [x] Ensure all tests still pass
 
-### Phase 2: Camera Infrastructure ⏳
-*Goal: Establish camera access and frame capture*
-- [ ] **Phase 2 Complete**
+### Phase 2: Camera System (Core Foundation)
 
-#### Cycle 2.1: Camera Configuration ✅
-- [x] **Cycle 2.1 Complete**
+### ✅ Cycle 2.1: Camera Configuration  
+- ✅ Camera config dataclass with validation
+- ✅ Camera profile loading from YAML
+- ✅ Environment variable overrides
+- ✅ Parameter validation and error handling
+- ✅ Camera capability detection and validation
 
-**RED**: Test camera configuration ✅
-- [x] Write failing tests for camera configuration
-```python
-def test_camera_config_creation():
-    # Should create valid camera config from profile
-    config = CameraConfig.from_profile('default')
-    assert config.device_id == 0
-    assert config.width == 640
-
-def test_camera_config_validation():
-    # Should validate camera parameters
-    with pytest.raises(ValueError):
-        CameraConfig(device_id=-1, width=0, height=0)
-```
-
-**GREEN**: Implement CameraConfig class ✅
-- [x] Create `src/camera/config.py`
-- [x] Define camera configuration structure
-- [x] Add validation logic
-- [x] Verify tests pass
-
-**REFACTOR**: Add property validation and defaults ✅
-- [x] Add comprehensive validation with detailed error messages
-- [x] Add logging support with debug and error messages
-- [x] Add enhanced environment variable overrides
-- [x] Add utility methods for resolution, aspect ratio, bandwidth estimation
-- [x] Add OpenCV property mappings and compatibility warnings
-- [x] Add exception chaining for better debugging
-- [x] Ensure all tests still pass
-
-#### Cycle 2.2: Basic Camera Manager
-- [ ] **Cycle 2.2 Complete**
-
-**RED**: Test camera initialization
-- [ ] Write failing tests for camera initialization
-```python
-@patch('cv2.VideoCapture')
-def test_camera_manager_initialization(mock_cv2):
-    # Should initialize camera with correct parameters
-    mock_cv2.return_value.isOpened.return_value = True
-    
-    manager = CameraManager(camera_config)
-    assert manager.is_initialized
-    mock_cv2.assert_called_with(0)
-
-@patch('cv2.VideoCapture')
-def test_camera_manager_handles_unavailable_camera(mock_cv2):
-    # Should handle camera not available
-    mock_cv2.return_value.isOpened.return_value = False
-    
-    with pytest.raises(CameraError):
-        CameraManager(camera_config)
-```
-
-**GREEN**: Implement basic CameraManager
-- [ ] Create `src/camera/manager.py`
-- [ ] Initialize OpenCV VideoCapture
-- [ ] Handle camera availability
-- [ ] Verify tests pass
-
-**REFACTOR**: Add camera capability detection
-- [ ] Add camera capability detection
-- [ ] Ensure all tests still pass
+### ✅ Cycle 2.2: Basic Camera Manager
+- ✅ Camera initialization and resource management
+- ✅ Frame capture with error handling
+- ✅ Configuration application and validation
+- ✅ Camera capability detection
+- ✅ Performance monitoring and statistics
 
 #### Cycle 2.3: Frame Capture
 - [ ] **Cycle 2.3 Complete**
@@ -734,9 +679,9 @@ Each phase is complete when:
   - [x] Cycle 1.1: Configuration Management
   - [x] Cycle 1.2: Logging Setup
 
-- [ ] **Phase 2**: Camera Infrastructure  
+- [ ] **Phase 2**: Camera System (Core Foundation)
   - [x] Cycle 2.1: Camera Configuration
-  - [ ] Cycle 2.2: Basic Camera Manager
+  - [x] Cycle 2.2: Basic Camera Manager
   - [ ] Cycle 2.3: Frame Capture
 
 - [ ] **Phase 3**: Queue and Processing Infrastructure
