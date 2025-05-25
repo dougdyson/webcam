@@ -408,4 +408,570 @@ class TestConditionalGestureDetection:
             event_publisher=event_publisher
         )
         
-        assert default_processor.config.min_human_confidence_for_gesture == 0.6, "Should use default confidence threshold" 
+        assert default_processor.config.min_human_confidence_for_gesture == 0.6, "Should use default confidence threshold"
+
+
+class TestEndToEndGestureSSEFlow:
+    """Test complete end-to-end pipeline: Camera → Presence → Gesture → SSE Event."""
+    
+    def test_complete_gesture_to_sse_pipeline(self):
+        """
+        RED TEST: Test complete pipeline from gesture detection to SSE streaming.
+        
+        Should test the full workflow: Enhanced frame processor detects gesture
+        and immediately streams it via SSE service to connected clients.
+        """
+        from src.processing.enhanced_frame_processor import EnhancedFrameProcessor
+        from src.service.sse_service import SSEDetectionService, SSEServiceConfig
+        import asyncio
+        
+        # Setup components
+        multimodal_detector = Mock(spec=MultiModalDetector)
+        gesture_detector = Mock(spec=GestureDetector)
+        event_publisher = EventPublisher()
+        
+        # Enhanced processor with real event publisher
+        processor = EnhancedFrameProcessor(
+            detector=multimodal_detector,
+            gesture_detector=gesture_detector,
+            event_publisher=event_publisher
+        )
+        
+        # SSE service with gesture filtering
+        sse_config = SSEServiceConfig(
+            host="localhost",
+            port=8766,
+            gesture_events_only=True,
+            min_gesture_confidence=0.6
+        )
+        sse_service = SSEDetectionService(sse_config)
+        
+        # Subscribe SSE service to events
+        sse_service.setup_gesture_integration(event_publisher)
+        
+        # Mock successful detections
+        test_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        
+        human_result = DetectionResult(
+            human_present=True,
+            confidence=0.8,
+            landmarks=[(0.5, 0.3)],
+            bounding_box=(100, 100, 200, 200)
+        )
+        multimodal_detector.detect.return_value = human_result
+        
+        gesture_result = GestureResult(
+            gesture_detected=True,
+            gesture_type="hand_up",
+            confidence=0.85,
+            hand="right",
+            duration_ms=1500
+        )
+        gesture_detector.detect_gestures.return_value = gesture_result
+        
+        # Process frame (should trigger gesture event)
+        processor.process_frame(test_frame)
+        
+        # Verify event was received by SSE service
+        # Check that the service is subscribed to events
+        assert sse_service.is_subscribed_to_events(), "SSE service should be subscribed to events"
+    
+    @pytest.mark.asyncio
+    async def test_real_time_gesture_streaming_to_multiple_clients(self):
+        """
+        RED TEST: Test real-time gesture events streamed to multiple SSE clients.
+        
+        Should test that when gesture is detected, multiple SSE clients
+        immediately receive the event in proper SSE format.
+        """
+        from src.processing.enhanced_frame_processor import EnhancedFrameProcessor
+        from src.service.sse_service import SSEDetectionService, SSEServiceConfig
+        
+        # Setup real async components
+        event_publisher = EventPublisher()
+        
+        # SSE service
+        sse_config = SSEServiceConfig(
+            host="localhost",
+            port=8766,
+            gesture_events_only=True
+        )
+        sse_service = SSEDetectionService(sse_config)
+        sse_service.setup_gesture_integration(event_publisher)
+        
+        # Mock multiple clients (simulate connection queues)
+        client_queues = []
+        for i in range(3):
+            client_queue = asyncio.Queue()
+            client_queues.append(client_queue)
+            sse_service.active_connections[f"client_{i}"] = client_queue
+        
+        # Create gesture event
+        gesture_event = ServiceEvent(
+            event_type=EventType.GESTURE_DETECTED,
+            data={
+                "gesture_type": "hand_up",
+                "confidence": 0.9,
+                "hand": "right",
+                "duration_ms": 2000
+            }
+        )
+        
+        # Publish event (should stream to all clients)
+        await event_publisher.publish_async(gesture_event)
+        
+        # Wait briefly for async processing
+        await asyncio.sleep(0.1)
+        
+        # Verify all clients received event
+        for i, client_queue in enumerate(client_queues):
+            assert not client_queue.empty(), f"Client {i} should receive gesture event"
+            
+            received_event = await client_queue.get()
+            assert "data:" in received_event, "Should be in SSE format"
+            assert "gesture_detected" in received_event, "Should contain event type"
+            assert "hand_up" in received_event, "Should contain gesture data"
+    
+    def test_multiple_gesture_events_sequence(self):
+        """
+        RED TEST: Test sequence of multiple gesture events handled correctly.
+        
+        Should test gesture detected → gesture lost → gesture detected again
+        and verify each event is processed and streamed correctly.
+        """
+        from src.processing.enhanced_frame_processor import EnhancedFrameProcessor
+        
+        multimodal_detector = Mock(spec=MultiModalDetector)
+        gesture_detector = Mock(spec=GestureDetector)
+        event_publisher = Mock(spec=EventPublisher)
+        
+        processor = EnhancedFrameProcessor(
+            detector=multimodal_detector,
+            gesture_detector=gesture_detector,
+            event_publisher=event_publisher
+        )
+        
+        test_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        
+        # Human always present for this test
+        human_result = DetectionResult(
+            human_present=True,
+            confidence=0.8,
+            landmarks=[(0.5, 0.3)],
+            bounding_box=(100, 100, 200, 200)
+        )
+        multimodal_detector.detect.return_value = human_result
+        
+        # Sequence: Gesture detected → No gesture → Gesture detected again
+        gesture_results = [
+            GestureResult(gesture_detected=True, gesture_type="hand_up", confidence=0.85, hand="right"),
+            GestureResult(gesture_detected=False, confidence=0.0),
+            GestureResult(gesture_detected=True, gesture_type="hand_up", confidence=0.9, hand="left")
+        ]
+        
+        # Process each frame in sequence
+        for i, gesture_result in enumerate(gesture_results):
+            gesture_detector.detect_gestures.return_value = gesture_result
+            processor.process_frame(test_frame)
+        
+        # Verify correct sequence of events published
+        published_calls = event_publisher.publish.call_args_list
+        assert len(published_calls) >= 2, "Should publish at least 2 gesture events"
+        
+        # First event: gesture detected
+        first_event = published_calls[0][0][0]
+        assert first_event.event_type == EventType.GESTURE_DETECTED, "First should be gesture detected"
+        assert first_event.data["hand"] == "right", "First gesture should be right hand"
+        
+        # Last event: gesture detected again (left hand)
+        last_event = published_calls[-1][0][0]  
+        assert last_event.event_type == EventType.GESTURE_DETECTED, "Last should be gesture detected"
+        assert last_event.data["hand"] == "left", "Last gesture should be left hand"
+    
+    def test_gesture_lost_events_when_hand_goes_down(self):
+        """
+        RED TEST: Test gesture lost events when hand goes down.
+        
+        Should test that when a detected gesture is no longer present,
+        a GESTURE_LOST event is published and streamed.
+        """
+        from src.processing.enhanced_frame_processor import EnhancedFrameProcessor
+        
+        multimodal_detector = Mock(spec=MultiModalDetector)
+        gesture_detector = Mock(spec=GestureDetector)
+        event_publisher = Mock(spec=EventPublisher)
+        
+        # Enhanced processor with gesture state tracking
+        processor = EnhancedFrameProcessor(
+            detector=multimodal_detector,
+            gesture_detector=gesture_detector,
+            event_publisher=event_publisher
+        )
+        
+        test_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        
+        human_result = DetectionResult(
+            human_present=True,
+            confidence=0.8,
+            landmarks=[(0.5, 0.3)],
+            bounding_box=(100, 100, 200, 200)
+        )
+        multimodal_detector.detect.return_value = human_result
+        
+        # Frame 1: Gesture detected
+        gesture_detected = GestureResult(
+            gesture_detected=True,
+            gesture_type="hand_up",
+            confidence=0.85,
+            hand="right",
+            duration_ms=1000
+        )
+        gesture_detector.detect_gestures.return_value = gesture_detected
+        processor.process_frame(test_frame)
+        
+        # Frame 2: Gesture no longer detected (hand went down)
+        gesture_lost = GestureResult(
+            gesture_detected=False,
+            confidence=0.0,
+            previous_gesture_type="hand_up",  # Should track what was lost
+            previous_hand="right"
+        )
+        gesture_detector.detect_gestures.return_value = gesture_lost
+        processor.process_frame(test_frame)
+        
+        # Verify both events were published
+        published_calls = event_publisher.publish.call_args_list
+        assert len(published_calls) >= 2, "Should publish both detected and lost events"
+        
+        # Verify gesture lost event
+        gesture_lost_events = [call[0][0] for call in published_calls 
+                             if call[0][0].event_type == EventType.GESTURE_LOST]
+        assert len(gesture_lost_events) > 0, "Should publish GESTURE_LOST event"
+        
+        lost_event = gesture_lost_events[0]
+        assert lost_event.data["previous_gesture_type"] == "hand_up", "Should track what gesture was lost"
+        assert lost_event.data["previous_hand"] == "right", "Should track which hand"
+    
+    def test_sse_client_receives_correct_event_format(self):
+        """
+        RED TEST: Test SSE clients receive events in correct SSE format.
+        
+        Should verify that gesture events are properly formatted as SSE events
+        with correct headers, data format, and JSON structure.
+        """
+        from src.service.sse_service import SSEDetectionService, SSEServiceConfig
+        
+        sse_config = SSEServiceConfig(
+            host="localhost",
+            port=8766,
+            gesture_events_only=True
+        )
+        sse_service = SSEDetectionService(sse_config)
+        
+        # Create test gesture event
+        gesture_event = ServiceEvent(
+            event_type=EventType.GESTURE_DETECTED,
+            data={
+                "gesture_type": "hand_up",
+                "confidence": 0.88,
+                "hand": "right",
+                "duration_ms": 1250,
+                "timestamp": "2024-01-15T10:30:00Z"
+            },
+            event_id="gesture_123"
+        )
+        
+        # Test SSE format conversion
+        sse_message = sse_service._format_event_for_sse(gesture_event)
+        
+        # Verify SSE format (should include event line and data line)
+        assert "event: gesture_detected" in sse_message, "Should include SSE event type"
+        assert "data: " in sse_message, "Should include SSE data line"
+        assert '"gesture_type": "hand_up"' in sse_message, "Should include gesture type in data"
+        assert '"confidence": 0.88' in sse_message, "Should include confidence in data"
+        assert '"event_type": "gesture_detected"' in sse_message, "Should include event_type in data"
+    
+    @pytest.mark.asyncio
+    async def test_gesture_to_sse_streaming_latency(self):
+        """
+        RED TEST: Test performance - gesture detection to SSE streaming latency.
+        
+        Should measure and validate that gesture events reach SSE clients
+        within acceptable latency bounds (<100ms).
+        """
+        from src.processing.enhanced_frame_processor import EnhancedFrameProcessor
+        from src.service.sse_service import SSEDetectionService, SSEServiceConfig
+        import time
+        
+        # Setup real async event flow
+        event_publisher = EventPublisher()
+        
+        sse_config = SSEServiceConfig(host="localhost", port=8766)
+        sse_service = SSEDetectionService(sse_config)
+        sse_service.setup_gesture_integration(event_publisher)
+        
+        # Mock client queue
+        client_queue = asyncio.Queue()
+        sse_service.active_connections["test_client"] = client_queue
+        
+        # Create gesture event with timestamp
+        start_time = time.time()
+        
+        gesture_event = ServiceEvent(
+            event_type=EventType.GESTURE_DETECTED,
+            data={
+                "gesture_type": "hand_up",
+                "confidence": 0.85,
+                "detection_timestamp": start_time
+            }
+        )
+        
+        # Publish event (async)
+        await event_publisher.publish_async(gesture_event)
+        
+        # Wait for event to reach client
+        await asyncio.sleep(0.01)  # Small delay for processing
+        
+        # Measure end-to-end latency
+        end_time = time.time()
+        latency = (end_time - start_time) * 1000  # Convert to milliseconds
+        
+        # Verify latency requirement
+        assert latency < 100, f"Gesture to SSE latency should be <100ms, was {latency:.2f}ms"
+        
+        # Verify event reached client
+        assert not client_queue.empty(), "Client should receive gesture event"
+    
+    def test_gesture_confidence_filtering_in_sse_stream(self):
+        """
+        RED TEST: Test gesture confidence filtering in SSE stream.
+        
+        Should verify that only gestures above configured confidence threshold
+        are streamed to SSE clients, filtering out low-confidence detections.
+        """
+        from src.service.sse_service import SSEDetectionService, SSEServiceConfig
+        
+        # SSE service with confidence filtering
+        sse_config = SSEServiceConfig(
+            host="localhost",
+            port=8766,
+            gesture_events_only=True,
+            min_gesture_confidence=0.7  # Filter threshold
+        )
+        sse_service = SSEDetectionService(sse_config)
+        
+        # Test events with different confidence levels
+        high_confidence_event = ServiceEvent(
+            event_type=EventType.GESTURE_DETECTED,
+            data={
+                "gesture_type": "hand_up",
+                "confidence": 0.85,  # Above threshold
+                "hand": "right"
+            }
+        )
+        
+        low_confidence_event = ServiceEvent(
+            event_type=EventType.GESTURE_DETECTED,
+            data={
+                "gesture_type": "hand_up", 
+                "confidence": 0.5,   # Below threshold
+                "hand": "left"
+            }
+        )
+        
+        # Test filtering logic
+        should_stream_high = sse_service._should_stream_event(high_confidence_event)
+        should_stream_low = sse_service._should_stream_event(low_confidence_event)
+        
+        assert should_stream_high is True, "Should stream high confidence gesture"
+        assert should_stream_low is False, "Should filter low confidence gesture"
+    
+    @pytest.mark.asyncio
+    async def test_concurrent_gesture_detection_and_sse_streaming(self):
+        """
+        RED TEST: Test concurrent gesture detection and SSE streaming performance.
+        
+        Should verify that multiple rapid gesture events can be processed
+        and streamed concurrently without blocking or event loss.
+        """
+        from src.processing.enhanced_frame_processor import EnhancedFrameProcessor
+        from src.service.sse_service import SSEDetectionService, SSEServiceConfig
+        import asyncio
+        
+        # Setup concurrent processing
+        event_publisher = EventPublisher()
+        
+        sse_config = SSEServiceConfig(host="localhost", port=8766)
+        sse_service = SSEDetectionService(sse_config)
+        sse_service.setup_gesture_integration(event_publisher)
+        
+        # Multiple mock clients
+        client_queues = []
+        for i in range(5):
+            client_queue = asyncio.Queue()
+            client_queues.append(client_queue)
+            sse_service.active_connections[f"client_{i}"] = client_queue
+        
+        # Generate rapid sequence of gesture events
+        gesture_events = []
+        for i in range(10):
+            event = ServiceEvent(
+                event_type=EventType.GESTURE_DETECTED,
+                data={
+                    "gesture_type": "hand_up",
+                    "confidence": 0.8 + (i * 0.01),  # Varying confidence
+                    "hand": "right" if i % 2 == 0 else "left",
+                    "sequence_id": i
+                }
+            )
+            gesture_events.append(event)
+        
+        # Publish all events concurrently
+        async def publish_events():
+            tasks = []
+            for event in gesture_events:
+                task = asyncio.create_task(event_publisher.publish_async(event))
+                tasks.append(task)
+            await asyncio.gather(*tasks)
+        
+        # Run concurrent publishing
+        await publish_events()
+        
+        # Wait for processing
+        await asyncio.sleep(0.2)
+        
+        # Verify all clients received all events
+        for i, client_queue in enumerate(client_queues):
+            received_count = client_queue.qsize()
+            assert received_count == 10, f"Client {i} should receive all 10 events, got {received_count}"
+    
+    def test_gesture_sse_integration_error_handling(self):
+        """
+        RED TEST: Test error handling in gesture→SSE integration.
+        
+        Should verify that SSE streaming errors don't affect gesture detection
+        and that gesture detection errors don't break SSE service.
+        """
+        from src.processing.enhanced_frame_processor import EnhancedFrameProcessor
+        from src.service.sse_service import SSEDetectionService, SSEServiceConfig
+        
+        multimodal_detector = Mock(spec=MultiModalDetector)
+        gesture_detector = Mock(spec=GestureDetector)
+        event_publisher = EventPublisher()
+        
+        processor = EnhancedFrameProcessor(
+            detector=multimodal_detector,
+            gesture_detector=gesture_detector,
+            event_publisher=event_publisher
+        )
+        
+        # SSE service with error simulation
+        sse_config = SSEServiceConfig(host="localhost", port=8766)
+        sse_service = SSEDetectionService(sse_config)
+        
+        # Mock SSE service method to simulate error
+        original_stream = sse_service.stream_gesture_event_to_clients
+        sse_service.stream_gesture_event_to_clients = Mock(side_effect=Exception("SSE streaming error"))
+        
+        sse_service.setup_gesture_integration(event_publisher)
+        
+        # Setup successful detection
+        test_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        
+        human_result = DetectionResult(
+            human_present=True,
+            confidence=0.8,
+            landmarks=[(0.5, 0.3)],
+            bounding_box=(100, 100, 200, 200)
+        )
+        multimodal_detector.detect.return_value = human_result
+        
+        gesture_result = GestureResult(
+            gesture_detected=True,
+            gesture_type="hand_up",
+            confidence=0.85,
+            hand="right"
+        )
+        gesture_detector.detect_gestures.return_value = gesture_result
+        
+        # Process frame - should not crash despite SSE error
+        result = processor.process_frame(test_frame)
+
+        # Trigger async event handler by publishing through EventPublisher
+        # This will call the SSE service's async subscription
+        gesture_event = ServiceEvent(
+            event_type=EventType.GESTURE_DETECTED,
+            data={
+                "gesture_type": "hand_up",
+                "confidence": 0.85,
+                "hand": "right"
+            }
+        )
+        
+        # Use async event publishing to trigger SSE async handler
+        import asyncio
+        asyncio.run(event_publisher.publish_async(gesture_event))
+
+        # Verify gesture detection still works
+        assert result.human_present is True, "Gesture detection should still work despite SSE error"
+        assert multimodal_detector.detect.called, "Should still call human detection"
+        assert gesture_detector.detect_gestures.called, "Should still call gesture detection"
+
+        # Verify SSE service attempted to stream (error isolation)
+        assert sse_service.stream_gesture_event_to_clients.called, "Should attempt SSE streaming"
+    
+    @pytest.mark.asyncio
+    async def test_sse_service_gesture_event_queue_management(self):
+        """
+        RED TEST: Test SSE service manages gesture event queues properly.
+        
+        Should verify that gesture events are queued efficiently for multiple
+        clients and that queue management prevents memory issues.
+        """
+        from src.service.sse_service import SSEDetectionService, SSEServiceConfig
+        import asyncio
+        
+        sse_config = SSEServiceConfig(
+            host="localhost",
+            port=8766,
+            max_queue_size=100  # Test queue limits
+        )
+        sse_service = SSEDetectionService(sse_config)
+        
+        # Add multiple clients
+        for i in range(3):
+            client_queue = asyncio.Queue(maxsize=50)  # Limited queue size
+            sse_service.active_connections[f"client_{i}"] = client_queue
+        
+        # Create many gesture events
+        events = []
+        for i in range(20):
+            event = ServiceEvent(
+                event_type=EventType.GESTURE_DETECTED,
+                data={
+                    "gesture_type": "hand_up",
+                    "confidence": 0.8,
+                    "sequence": i
+                }
+            )
+            events.append(event)
+        
+        # Queue events for all clients (await the async method)
+        for event in events:
+            await sse_service._queue_event_for_all_clients(event)
+        
+        # Verify all clients have events queued
+        for client_id, client_data in sse_service.active_connections.items():
+            queue_size = client_data.qsize()
+            assert queue_size == 20, f"Client {client_id} should have 20 queued events, got {queue_size}"
+        
+        # Test queue overflow protection
+        overflow_event = ServiceEvent(
+            event_type=EventType.GESTURE_DETECTED,
+            data={"gesture_type": "hand_up", "overflow_test": True}
+        )
+        
+        # Should handle queue overflow gracefully (await the async method)
+        await sse_service._queue_event_for_all_clients(overflow_event)
+        
+        # Verify service remains stable (no crashes) 

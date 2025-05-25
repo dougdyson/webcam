@@ -42,6 +42,9 @@ class SSEServiceConfig:
     service_name: str = "SSEDetectionService"
     service_version: str = "1.0.0"
     
+    # NEW Phase 16.2: Queue management configuration
+    max_queue_size: int = 100
+    
     def __post_init__(self):
         """Validate configuration values."""
         if not 0.0 <= self.min_gesture_confidence <= 1.0:
@@ -52,6 +55,8 @@ class SSEServiceConfig:
             raise ValueError("heartbeat_interval must be positive")
         if self.connection_timeout <= 0:
             raise ValueError("connection_timeout must be positive")
+        if self.max_queue_size <= 0:
+            raise ValueError("max_queue_size must be positive")
     
     @classmethod
     def get_configuration_documentation(cls) -> Dict[str, Any]:
@@ -107,6 +112,11 @@ class SSEServiceConfig:
                     "type": "string",
                     "default": "1.0.0",
                     "description": "Version identifier for the service"
+                },
+                "max_queue_size": {
+                    "type": "integer",
+                    "default": 100,
+                    "description": "Maximum queue size for event storage"
                 }
             },
             "examples": {
@@ -160,7 +170,7 @@ class SSEServiceConfig:
             "host", "port", "max_connections", "heartbeat_interval", 
             "connection_timeout", "gesture_events_only", "include_confidence_updates",
             "min_gesture_confidence", "enable_detailed_logging", 
-            "service_name", "service_version"
+            "service_name", "service_version", "max_queue_size"
         }
         
         # Check for unknown parameters
@@ -193,6 +203,11 @@ class SSEServiceConfig:
             confidence = config_dict["min_gesture_confidence"]
             if not isinstance(confidence, (int, float)) or not 0.0 <= confidence <= 1.0:
                 errors.append("Min gesture confidence must be a number between 0.0 and 1.0")
+        
+        if "max_queue_size" in config_dict:
+            queue_size = config_dict["max_queue_size"]
+            if not isinstance(queue_size, int) or queue_size <= 0:
+                errors.append("Max queue size must be a positive integer")
         
         return {
             "is_valid": len(errors) == 0,
@@ -337,7 +352,8 @@ class SSEDetectionService:
         if len(self.active_connections) >= self.config.max_connections:
             raise HTTPException(status_code=429, detail="Too many connections")
         
-        self.active_connections[client_id] = asyncio.Queue()
+        # Create event queue for client
+        self.active_connections[client_id] = asyncio.Queue(maxsize=self.config.max_queue_size)
         
         # NEW Phase 15.3: Track connection metrics
         self._total_connections += 1
@@ -842,3 +858,59 @@ class SSEDetectionService:
         async def health():
             """Health check endpoint."""
             return self.get_health_status() 
+
+    # NEW Phase 16.2: End-to-End Integration Methods
+    def setup_gesture_integration(self, event_publisher: EventPublisher):
+        """Setup gesture integration with EventPublisher (synchronous version)."""
+        self._event_publisher = event_publisher
+        
+        # Subscribe to async events (gesture events are published async)
+        event_publisher.subscribe_async(self._handle_gesture_event)
+        self._subscribed_to_events = True
+        
+        # Generate a subscription ID for tracking
+        subscription_id = f"sse_service_{id(self)}"
+        self._subscription_id = subscription_id
+        
+        logging.info(f"SSE service gesture integration setup with ID: {subscription_id}")
+        return subscription_id
+    
+    def _format_event_for_sse(self, event: ServiceEvent) -> str:
+        """Format ServiceEvent for SSE streaming (alias for _convert_event_to_sse_format)."""
+        return self._convert_event_to_sse_format(event)
+    
+    def _should_stream_event(self, event: ServiceEvent) -> bool:
+        """Check if event should be streamed (alias for should_stream_event)."""
+        return self.should_stream_event(event)
+    
+    async def broadcast_to_all_clients(self, event: ServiceEvent):
+        """Broadcast event to all connected clients."""
+        await self.stream_gesture_event_to_clients(event)
+    
+    async def _queue_event_for_all_clients(self, event: ServiceEvent):
+        """Queue event for all connected clients."""
+        if not self.active_connections:
+            return
+        
+        # Check if event should be streamed before queuing
+        if not self.should_stream_event(event):
+            return
+        
+        # Convert event to SSE format
+        sse_message = self._convert_event_to_sse_format(event)
+        
+        # Queue for all active clients
+        for client_id, client_queue in self.active_connections.items():
+            try:
+                # Check queue size limit
+                if client_queue.qsize() >= self.config.max_queue_size:
+                    logging.warning(f"Queue at max size for client {client_id}, dropping oldest event")
+                    # Remove oldest event if queue is full
+                    try:
+                        client_queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                
+                client_queue.put_nowait(sse_message)
+            except Exception as e:
+                logging.error(f"Error queuing event for client {client_id}: {e}") 

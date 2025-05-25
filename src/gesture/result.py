@@ -51,6 +51,10 @@ class GestureResult:
     duration_ms: float = 0.0
     timestamp: datetime = field(default_factory=datetime.now)
     
+    # NEW Phase 16.2: Support for gesture lost events
+    previous_gesture_type: Optional[str] = None
+    previous_hand: Optional[str] = None
+    
     def __post_init__(self):
         """Validate the result after initialization."""
         if not 0.0 <= self.confidence <= 1.0:
@@ -72,7 +76,9 @@ class GestureResult:
             'position': self.position,
             'palm_facing_camera': self.palm_facing_camera,
             'duration_ms': self.duration_ms,
-            'timestamp': self.timestamp.isoformat()
+            'timestamp': self.timestamp.isoformat(),
+            'previous_gesture_type': self.previous_gesture_type,
+            'previous_hand': self.previous_hand
         }
     
     def to_service_event(self) -> 'ServiceEvent':
@@ -108,5 +114,7 @@ class GestureResult:
             position=data.get('position'),
             palm_facing_camera=data.get('palm_facing_camera', False),
             duration_ms=data.get('duration_ms', 0.0),
-            timestamp=timestamp
+            timestamp=timestamp,
+            previous_gesture_type=data.get('previous_gesture_type'),
+            previous_hand=data.get('previous_hand')
         ) 

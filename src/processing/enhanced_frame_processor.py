@@ -75,6 +75,9 @@ class EnhancedFrameProcessor:
             "errors_handled": 0
         }
         
+        # NEW Phase 16.2: Gesture state tracking for GESTURE_LOST events
+        self.previous_gesture_result: Optional[GestureResult] = None
+        
         self.logger = logging.getLogger(__name__)
     
     def process_frame(self, frame) -> DetectionResult:
@@ -112,6 +115,15 @@ class EnhancedFrameProcessor:
                     if gesture_result and gesture_result.gesture_detected and self.config.publish_gesture_events:
                         self._publish_gesture_event(gesture_result)
                         
+                    # NEW Phase 16.2: Check for GESTURE_LOST events
+                    elif self.previous_gesture_result and self.previous_gesture_result.gesture_detected:
+                        # Previous gesture was detected but current is not - publish GESTURE_LOST
+                        if self.config.publish_gesture_events:
+                            self._publish_gesture_lost_event(self.previous_gesture_result)
+                    
+                    # Update previous gesture state
+                    self.previous_gesture_result = gesture_result
+                    
                 except Exception as e:
                     # Handle gesture detection errors gracefully
                     self._handle_gesture_detection_error(e)
@@ -182,15 +194,73 @@ class EnhancedFrameProcessor:
                 timestamp=datetime.now()
             )
             
-            # Publish event
+            # Publish event - use both sync and async for compatibility
             self.event_publisher.publish(event)
+            
+            # Also publish async for SSE service integration
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Create task if loop is already running
+                    asyncio.create_task(self.event_publisher.publish_async(event))
+                else:
+                    # Run if no loop is running
+                    asyncio.run(self.event_publisher.publish_async(event))
+            except RuntimeError:
+                # Fallback to sync only if async fails
+                pass
             
             # Track performance
             if self.config.performance_monitoring:
                 self._performance_stats["gesture_events_published"] += 1
-                
+            
         except Exception as e:
-            self.logger.error(f"Error publishing gesture event: {e}")
+            self._handle_gesture_detection_error(e)
+    
+    def _publish_gesture_lost_event(self, previous_gesture_result: GestureResult) -> None:
+        """
+        Publish gesture lost event when gesture is no longer detected.
+        
+        Args:
+            previous_gesture_result: Previously detected gesture result
+        """
+        try:
+            # Convert to gesture lost event
+            event = ServiceEvent(
+                event_type=EventType.GESTURE_LOST,
+                data={
+                    "previous_gesture_type": previous_gesture_result.gesture_type,
+                    "previous_hand": previous_gesture_result.hand,
+                    "previous_confidence": previous_gesture_result.confidence,
+                    "duration_ms": getattr(previous_gesture_result, 'duration_ms', None)
+                },
+                timestamp=datetime.now()
+            )
+            
+            # Publish event - use both sync and async for compatibility
+            self.event_publisher.publish(event)
+            
+            # Also publish async for SSE service integration
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Create task if loop is already running
+                    asyncio.create_task(self.event_publisher.publish_async(event))
+                else:
+                    # Run if no loop is running
+                    asyncio.run(self.event_publisher.publish_async(event))
+            except RuntimeError:
+                # Fallback to sync only if async fails
+                pass
+            
+            # Track performance
+            if self.config.performance_monitoring:
+                self._performance_stats["gesture_events_published"] += 1
+            
+        except Exception as e:
+            self._handle_gesture_detection_error(e)
     
     def _handle_gesture_detection_error(self, error: Exception) -> None:
         """
