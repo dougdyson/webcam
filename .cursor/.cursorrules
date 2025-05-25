@@ -26,7 +26,7 @@
 
 # Core Libraries & Technologies (Current Implementation)
 - Use `opencv-python` (cv2) for camera access, video capture, and frame processing.
-- Use `mediapipe` for human presence detection (BlazePose, Face Detection, or Holistic solutions).
+- Use `mediapipe` for human presence detection (Pose, Face Detection, and Holistic solutions).
 - Use `numpy` for numerical operations and image data representation.
 - Use `threading` for running video capture in separate threads.
 - Use `asyncio` for asynchronous frame processing and queue management.
@@ -34,6 +34,15 @@
 - Use `argparse` for CLI argument parsing.
 - Use `python-dotenv` for managing environment variables and configuration.
 - Use `PyYAML` for loading YAML configuration files.
+
+# Multi-Modal Detection System
+- **Default Detector**: Use 'multimodal' detector type by default for extended range (3x better than pose-only)
+- **Factory Pattern**: Always use `create_detector(detector_type, config)` via DetectorFactory for creating detectors
+- **Detector Types**: Support 'multimodal' (pose+face), 'mediapipe' (pose-only), plus aliases 'pose_face' and 'pose'
+- **CLI Integration**: Support `--detector-type` argument with proper aliases and validation
+- **Extended Range**: Multi-modal detection optimized for both desk-distance and kitchen-distance scenarios
+- **Weighted Fusion**: Use 0.6 pose weight, 0.4 face weight for optimal detection fusion
+- **Resource Management**: Proper MediaPipe initialization and cleanup for both pose and face detection
 
 # Alternative/Future Libraries & Technologies (For Reference)
 - Use `tensorflow` or `pytorch` for custom human detection models if needed.
@@ -44,18 +53,21 @@
 
 # Current Architecture & Design Principles
 - Organize code into logical modules: camera, detection, processing, utils, cli.
-- The system consists of several workflows: video capture, frame processing, human detection, and presence monitoring.
-- Implement a pipeline architecture: Video Capture -> Frame Queue -> Human Detection -> Presence Decision -> Action/Logging.
+- The system consists of several workflows: video capture, frame processing, multi-modal human detection, and presence monitoring.
+- Implement a pipeline architecture: Video Capture -> Frame Queue -> Multi-Modal Detection -> Presence Decision -> Action/Logging.
 - Design pipeline stages to be decoupled, communicating via queues for asynchronous processing.
+- **Factory Pattern**: Use DetectorFactory for extensible detector registration and creation
+- **Detector Selection**: Support runtime detector type selection via CLI and configuration
 - Configuration is managed via YAML files in the config/ directory.
-- Implement debounce/smoothing mechanisms to reduce false positives in detection.
+- Implement debounce/smoothing mechanisms with weighted voting to reduce false positives in detection.
 - Ensure robust handling of different lighting conditions and camera distances.
-- Always append `conda activate webcam && ` to amm terminal commands
+- **Extended Range Support**: Design for both close-range (desk) and distant (kitchen/cooking) scenarios
+- Always append `conda activate webcam && ` to terminal commands
 - Always check the `docs` folder first if samples or examples required
 
 # Future Architecture & Design Principles (For Reference)
 - Integrate with speaker verification system for multi-modal authentication.
-- Implement the **Provider Pattern** for different detection backends (MediaPipe, TensorFlow, PyTorch).
+- Expand the **Factory Pattern** for different detection backends (MediaPipe, TensorFlow, PyTorch).
 - Consider real-time monitoring dashboards for debugging and system status.
 - Plan for integration with home automation or security systems.
 
@@ -63,13 +75,17 @@
 - Maintain a clean directory structure:
   - `src/` - Main application code
   - `src/camera/` - Camera capture and management
-  - `src/detection/` - Human detection algorithms
+  - `src/detection/` - Human detection algorithms and factory pattern
+    - `multimodal_detector.py` - Multi-modal pose+face detection
+    - `mediapipe_detector.py` - Traditional pose-only detection
+    - `base.py` - Abstract detector base and factory
   - `src/processing/` - Frame processing and queue management
   - `src/utils/` - Utility functions and helpers
-  - `src/cli/` - Command-line interface
+  - `src/cli/` - Command-line interface with detector selection
   - `config/` - Configuration files
   - `docs/` - reference and samples
-  - `tests/` - Test files
+  - `tests/` - Test files (264+ comprehensive tests)
+    - `test_integration/` - Integration test scenarios
   - `data/` - Sample data, logs, or temporary files
 - Prioritize modularity and clear separation of concerns.
 - Use Python 3.10+ features where appropriate.
@@ -84,6 +100,8 @@
 - Use `asyncio` for asynchronous frame processing to handle detection without blocking capture.
 - Implement proper queue management with `queue.Queue` for thread-safe communication.
 - Consider frame rate limiting and buffer management to prevent memory issues.
+- **Multi-Modal Processing**: Handle concurrent pose and face detection efficiently
+- **Resource Management**: Proper MediaPipe context management and cleanup
 
 # Error Handling & Testing
 - Implement robust error handling around camera access and frame processing.
@@ -92,11 +110,37 @@
 - Use pytest for testing and ensure test filenames are unique across the project.
 - Mock camera inputs for testing detection algorithms.
 - Test different lighting conditions and scenarios with sample images/videos.
+- **Comprehensive Testing**: Maintain 264+ tests covering all components and integration scenarios
+- **Test Categories**: Unit tests, integration tests, multi-modal detection tests, CLI tests
+- **Test Isolation**: Use proper mocking to avoid pytest interference with SystemExit and similar issues
+- **Factory Pattern Testing**: Test detector registration, creation, and type validation
 
 # Configuration & Environment
 - Access all configuration values through a dedicated configuration management system.
 - Load camera settings, detection parameters, and thresholds from configuration files.
 - Store camera profiles and detection settings in `config/camera_profiles.yaml`.
 - Store detection model parameters in `config/detection_config.yaml`.
+- **Multi-Modal Configuration**: Support pose_weight, face_weight, and detector-specific settings
 - Use virtual environment isolation for all dependencies.
-- Ensure all processing remains local (no cloud dependencies). 
+- Ensure all processing remains local (no cloud dependencies).
+
+# Performance & Optimization
+- **Initialization Time**: Target <3.5s for multi-modal detector startup
+- **Frame Rate**: Maintain 15-30 FPS processing
+- **Extended Range**: Support 3x detection range compared to pose-only detection
+- **Memory Management**: Bounded queues, proper MediaPipe resource cleanup
+- **Parallel Processing**: Efficient pose and face detection fusion
+
+# CLI & User Interface
+- **Detector Selection**: Support `--detector-type` argument with multimodal/mediapipe/pose/pose_face options
+- **Default Behavior**: Use 'multimodal' as default detector type
+- **Help and Validation**: Comprehensive argument validation and help text
+- **Error Handling**: Proper exit codes and error messages
+- **Alias Support**: Support intuitive aliases for detector types
+
+# Documentation & Maintenance
+- **Architecture Documentation**: Keep ARCHITECTURE.md updated with system changes
+- **Implementation Summaries**: Document major enhancements in dedicated files
+- **Clean Sample Removal**: Remove debug/test files that are no longer needed
+- **Test Documentation**: Document test coverage and categories
+- **Performance Metrics**: Document initialization times and detection capabilities 
