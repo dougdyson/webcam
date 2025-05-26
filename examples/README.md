@@ -45,6 +45,24 @@ Quick-start examples for getting up and running with webcam-detection package.
 
 ## 📁 What's Here
 
+### 🎯 **Core Examples**
+- **`simple_detection.py`** - Basic human detection example
+- **`gesture_service.py`** - Simplified gesture service (alternative to enhanced service)
+
+### 🤝 **Client Integration Examples**
+- **`simple_gesture_client.py`** - Simple SSE gesture client
+- **`external_app_gesture_client.py`** - Comprehensive external app integration
+- **`gesture_client_example.py`** - Detailed gesture client with error handling
+- **`voice_bot_quick_integration.py`** - Quick voice bot integration
+- **`voice_library_examples.py`** - Voice library integration patterns
+
+### 🔧 **Testing & Debugging**
+- **`debug_gesture_real.py`** - Real-time gesture debugging tools
+- **`gesture_diagnostic.py`** - Gesture system diagnostics
+- **`live_gesture_video_test.py`** - Live video testing with gesture overlay
+- **`live_status_viewer.py`** - Real-time status monitoring
+
+### 📚 **Comprehensive Patterns**
 - **`package_usage_examples.py`** - Production-ready integration patterns
   - ✅ HTTP service startup (recommended)
   - ✅ Speaker verification guard clauses  
@@ -64,17 +82,49 @@ Quick-start examples for getting up and running with webcam-detection package.
 
 ## 🏃 Run Examples
 
+### Basic Detection
+```bash
+python examples/simple_detection.py
+```
+
+### Gesture Service (Alternative)
+```bash
+python examples/gesture_service.py
+```
+
+### Client Examples
+```bash
+# Simple gesture client
+python examples/simple_gesture_client.py
+
+# External app integration
+python examples/external_app_gesture_client.py
+
+# Voice bot integration
+python examples/voice_bot_quick_integration.py
+```
+
+### Testing & Debugging
+```bash
+# Real-time gesture debugging
+python examples/debug_gesture_real.py
+
+# Live video testing
+python examples/live_gesture_video_test.py
+
+# System diagnostics
+python examples/gesture_diagnostic.py
+```
+
+### All Production Patterns
 ```bash
 # Run all examples
 python examples/package_usage_examples.py
-
-# Or specific examples
-python -c "from examples.package_usage_examples import example_speaker_verification_production; example_speaker_verification_production()"
 ```
 
 ## 💡 Next Steps
 
 1. **Quick prototype**: Start with examples here
-2. **Production deployment**: Reference `docs/production_service_patterns.py`
+2. **Production deployment**: Use main `webcam_enhanced_service.py` in root
 3. **Advanced patterns**: See `docs/service_patterns.py`
 4. **API reference**: Check `docs/PACKAGE_USAGE.md` 

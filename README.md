@@ -8,6 +8,8 @@
 
 Webcam Detection provides a comprehensive, local-processing human presence detection system using computer vision. Perfect for guard clauses in speaker verification, smart home automation, security systems, and any application requiring reliable human presence detection.
 
+**🎯 Clean Project Structure**: All examples and client code are organized in the `examples/` directory. See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for navigation guide.
+
 > 📁 **New to the project?** See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for a quick navigation guide.
 
 ## 🚀 Key Features

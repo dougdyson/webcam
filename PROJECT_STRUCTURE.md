@@ -6,7 +6,7 @@ Quick reference for navigating the webcam-detection project.
 
 ```
 webcam/
-├── 🏠 ROOT FILES
+├── 🏠 ROOT FILES (Clean & Organized)
 │   ├── webcam_enhanced_service.py     # 🚀 MAIN SERVICE (production ready + gesture recognition)
 │   ├── webcam_http_service.py         # HTTP-only service (alternative)
 │   ├── README.md                      # Project overview and quick start
@@ -40,9 +40,23 @@ webcam/
 │   │   ├── service_patterns.py       # Service architecture
 │   │   └── [more detailed docs]      # Configuration, testing, etc.
 │   │
-│   ├── examples/                      # 🚀 QUICK START EXAMPLES
-│   │   ├── package_usage_examples.py  # Simple usage patterns
-│   │   └── README.md                 # Quick start guide
+│   ├── examples/                      # 🚀 EXAMPLES & CLIENT CODE (Organized!)
+│   │   ├── 🎯 Core Examples:
+│   │   │   ├── simple_detection.py          # Basic human detection
+│   │   │   └── gesture_service.py           # Simplified gesture service
+│   │   ├── 🤝 Client Integration:
+│   │   │   ├── simple_gesture_client.py     # Simple SSE client
+│   │   │   ├── external_app_gesture_client.py  # Comprehensive integration
+│   │   │   ├── gesture_client_example.py    # Detailed error handling
+│   │   │   ├── voice_bot_quick_integration.py  # Voice bot integration
+│   │   │   └── voice_library_examples.py    # Voice library patterns
+│   │   ├── 🔧 Testing & Debugging:
+│   │   │   ├── debug_gesture_real.py        # Real-time debugging
+│   │   │   ├── gesture_diagnostic.py        # System diagnostics
+│   │   │   ├── live_gesture_video_test.py   # Live video testing
+│   │   │   └── live_status_viewer.py        # Status monitoring
+│   │   └── 📚 Production Patterns:
+│   │       └── package_usage_examples.py    # Comprehensive integration
 │   │
 ├── ⚙️ CONFIGURATION
 │   ├── config/                        # Configuration files
@@ -52,10 +66,12 @@ webcam/
 │   │
 ├── 📋 PROJECT DOCS
 │   ├── ARCHITECTURE.md                # System architecture (comprehensive)
-│   └── TDD_PLAN.md                   # Development methodology
+│   ├── TDD_PLAN.md                   # Development methodology
+│   └── PROJECT_STRUCTURE.md          # This file
 │
 └── 💾 DATA & OUTPUT
     ├── data/                          # Logs, temporary files, models
+    │   └── webcam.log                # Moved here from root
     ├── dist/                          # Built packages
     └── .benchmarks/                   # Performance benchmarks
 ```
