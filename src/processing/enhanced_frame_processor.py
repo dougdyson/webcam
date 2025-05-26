@@ -105,14 +105,29 @@ class EnhancedFrameProcessor:
                     if self.config.performance_monitoring:
                         self._performance_stats["gesture_detection_runs"] += 1
                     
-                    # Run gesture detection with pose landmarks
+                    # DEBUG: Print when we're running gesture detection
+                    print(f"🖐️ Running gesture detection (human conf: {human_result.confidence:.2f})...")
+                    
+                    # GESTURE FIX: Use original MediaPipe pose landmarks for gesture detection
+                    # The human_result.landmarks contains converted tuples, but gesture detection needs
+                    # the original MediaPipe landmarks object with .landmark attribute
+                    original_pose_landmarks = getattr(human_result, '_original_pose_landmarks', None)
+                    
+                    # Run gesture detection with original pose landmarks
                     gesture_result = self.gesture_detector.detect_gestures(
                         frame,
-                        pose_landmarks=human_result.landmarks
+                        pose_landmarks=original_pose_landmarks
                     )
+                    
+                    # DEBUG: Print gesture detection result
+                    if gesture_result:
+                        print(f"🔍 Gesture result: detected={gesture_result.gesture_detected}, type={gesture_result.gesture_type}, conf={gesture_result.confidence:.2f}")
+                    else:
+                        print("❌ Gesture detection returned None")
                     
                     # Step 3: Publish gesture events if detected
                     if gesture_result and gesture_result.gesture_detected and self.config.publish_gesture_events:
+                        print(f"📡 Publishing gesture event: {gesture_result.gesture_type}")
                         self._publish_gesture_event(gesture_result)
                         
                     # NEW Phase 16.2: Check for GESTURE_LOST events
@@ -126,10 +141,12 @@ class EnhancedFrameProcessor:
                     
                 except Exception as e:
                     # Handle gesture detection errors gracefully
+                    print(f"❌ Gesture detection error: {e}")
                     self._handle_gesture_detection_error(e)
                     
             else:
                 # Track skipped gesture detection
+                print(f"⏭️ Skipping gesture detection (human: {human_result.human_present}, conf: {human_result.confidence:.2f})")
                 if self.config.performance_monitoring:
                     self._performance_stats["gesture_detection_skipped"] += 1
             

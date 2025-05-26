@@ -273,12 +273,21 @@ class MultiModalDetector(HumanDetector):
             primary_bbox = None
         
         # Create detection result
-        return DetectionResult(
+        result = DetectionResult(
             human_present=human_present,
             confidence=combined_confidence,
             bounding_box=primary_bbox,
             landmarks=pose_landmarks if pose_landmarks else None
         )
+        
+        # GESTURE FIX: Store original MediaPipe pose landmarks for gesture detection
+        # This allows gesture detector to access raw landmarks with .landmark attribute
+        if pose_detected:
+            result._original_pose_landmarks = pose_results.pose_landmarks
+        else:
+            result._original_pose_landmarks = None
+        
+        return result
     
     def _calculate_pose_confidence(self, pose_landmarks) -> float:
         """

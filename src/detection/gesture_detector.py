@@ -218,15 +218,20 @@ class GestureDetector(HumanDetector):
             confidence=0.0
         )
         
-        # Check if any hands were detected
+        # DEBUG: Check if any hands were detected
         if not hands_results.multi_hand_landmarks:
+            print("🚫 No hands detected by MediaPipe")
             return gesture_result
+        
+        print(f"✋ {len(hands_results.multi_hand_landmarks)} hands detected")
+        print(f"📍 Pose landmarks provided: {pose_landmarks is not None}")
         
         # Process each detected hand
         for hand_idx, hand_landmarks in enumerate(hands_results.multi_hand_landmarks):
             
             # Calculate palm normal vector for this hand
             palm_normal = self._calculate_palm_normal(hand_landmarks)
+            print(f"🌊 Palm normal vector: {palm_normal}")
             
             # Try to detect "hand up" gesture
             gesture_detected = False
@@ -234,11 +239,13 @@ class GestureDetector(HumanDetector):
             
             if pose_landmarks is not None:
                 # Use pose landmarks for shoulder reference (preferred)
+                print("🎯 Using pose landmarks for shoulder reference")
                 gesture_detected = self._gesture_classifier.detect_hand_up_gesture_with_pose(
                     hand_landmarks=hand_landmarks.landmark,
                     pose_landmarks=pose_landmarks,
                     palm_normal_vector=palm_normal
                 )
+                print(f"🔍 Gesture detected (with pose): {gesture_detected}")
                 
                 if gesture_detected:
                     confidence = self._gesture_classifier.calculate_gesture_confidence(
@@ -246,14 +253,17 @@ class GestureDetector(HumanDetector):
                         shoulder_reference_y=self._gesture_classifier.calculate_shoulder_reference(pose_landmarks),
                         palm_normal_vector=palm_normal
                     )
+                    print(f"📊 Confidence: {confidence}")
             else:
                 # Fallback: use estimated shoulder position (less accurate)
+                print("📐 Using estimated shoulder position (fallback)")
                 estimated_shoulder_y = 0.4  # Approximate shoulder level
                 gesture_detected = self._gesture_classifier.detect_hand_up_gesture(
                     hand_landmarks=hand_landmarks.landmark,
                     shoulder_reference_y=estimated_shoulder_y,
                     palm_normal_vector=palm_normal
                 )
+                print(f"🔍 Gesture detected (fallback): {gesture_detected}")
                 
                 if gesture_detected:
                     confidence = self._gesture_classifier.calculate_gesture_confidence(
@@ -261,6 +271,7 @@ class GestureDetector(HumanDetector):
                         shoulder_reference_y=estimated_shoulder_y,
                         palm_normal_vector=palm_normal
                     )
+                    print(f"📊 Confidence: {confidence}")
             
             # If gesture detected, update result
             if gesture_detected:

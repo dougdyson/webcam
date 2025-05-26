@@ -47,23 +47,45 @@ class GestureClassifier:
         Returns:
             Average Y coordinate of shoulders, or None if landmarks unavailable
         """
+        # DEBUG: Check pose landmarks step by step
+        print(f"🏃 SHOULDER DEBUG: pose_landmarks = {pose_landmarks}")
+        print(f"🏃 SHOULDER DEBUG: pose_landmarks is None = {pose_landmarks is None}")
+        
         if pose_landmarks is None:
+            print("🏃 SHOULDER DEBUG: Returning None - pose_landmarks is None")
             return None
         
-        if not hasattr(pose_landmarks, 'landmark') or len(pose_landmarks.landmark) < 33:
-            return None
+        # Check if this is a MediaPipe landmarks object with .landmark attribute
+        print(f"🏃 SHOULDER DEBUG: pose_landmarks type = {type(pose_landmarks)}")
+        print(f"🏃 SHOULDER DEBUG: has landmark attr = {hasattr(pose_landmarks, 'landmark')}")
         
-        try:
-            # MediaPipe pose landmark indices:
-            # 11 = LEFT_SHOULDER, 12 = RIGHT_SHOULDER
-            left_shoulder_y = pose_landmarks.landmark[11].y
-            right_shoulder_y = pose_landmarks.landmark[12].y
+        if hasattr(pose_landmarks, 'landmark'):
+            # This is the correct MediaPipe landmarks object
+            landmarks = pose_landmarks.landmark
+            print(f"🏃 SHOULDER DEBUG: Found .landmark attribute with {len(landmarks)} landmarks")
             
-            # Return average of both shoulders
-            shoulder_reference_y = (left_shoulder_y + right_shoulder_y) / 2.0
-            return float(shoulder_reference_y)
+            # MediaPipe pose landmark indices for shoulders
+            LEFT_SHOULDER = 11
+            RIGHT_SHOULDER = 12
             
-        except (IndexError, AttributeError):
+            try:
+                if len(landmarks) > max(LEFT_SHOULDER, RIGHT_SHOULDER):
+                    left_shoulder = landmarks[LEFT_SHOULDER]
+                    right_shoulder = landmarks[RIGHT_SHOULDER]
+                    
+                    # Calculate average Y coordinate of shoulders
+                    shoulder_y = (left_shoulder.y + right_shoulder.y) / 2.0
+                    print(f"🏃 SHOULDER DEBUG: Calculated shoulder Y = {shoulder_y}")
+                    return float(shoulder_y)
+                else:
+                    print(f"🏃 SHOULDER DEBUG: Not enough landmarks: {len(landmarks)}")
+                    return None
+            except Exception as e:
+                print(f"🏃 SHOULDER DEBUG: Error accessing landmarks: {e}")
+                return None
+        else:
+            # This might be the old tuple list format - return None to indicate it's wrong
+            print("🏃 SHOULDER DEBUG: Returning None - invalid landmark structure")
             return None
     
     def is_palm_facing_camera(self, palm_normal_vector: np.ndarray) -> bool:
@@ -106,16 +128,23 @@ class GestureClassifier:
         # Calculate shoulder reference from pose data
         shoulder_reference_y = self.calculate_shoulder_reference(pose_landmarks)
         
+        # DEBUG: Print shoulder calculation details
+        print(f"🏃 POSE DEBUG: Shoulder reference Y = {shoulder_reference_y}")
+        
         # If no pose data available, cannot detect gesture
         if shoulder_reference_y is None:
+            print("❌ No shoulder reference available from pose landmarks")
             return False
         
         # Use existing gesture detection logic
-        return self.detect_hand_up_gesture(
+        result = self.detect_hand_up_gesture(
             hand_landmarks=hand_landmarks,
             shoulder_reference_y=shoulder_reference_y,
             palm_normal_vector=palm_normal_vector
         )
+        
+        print(f"🎯 Final gesture result from pose-based detection: {result}")
+        return result
     
     def detect_hand_up_gesture(self, hand_landmarks: List[Any], 
                               shoulder_reference_y: float, 
@@ -149,16 +178,30 @@ class GestureClassifier:
         # Calculate hand center Y coordinate (using middle finger MCP as reference)
         hand_center_y = self._get_hand_center_y(hand_landmarks)
         
+        # DEBUG: Print the actual values being compared
+        print(f"🔍 GESTURE DEBUG:")
+        print(f"   Hand center Y: {hand_center_y:.3f}")
+        print(f"   Shoulder ref Y: {shoulder_reference_y:.3f}")
+        print(f"   Threshold offset: {self.shoulder_offset_threshold:.3f}")
+        print(f"   Required Y for 'above': < {shoulder_reference_y - self.shoulder_offset_threshold:.3f}")
+        
         # Check if hand is above shoulder level
         # In image coordinates, smaller Y means higher position
         is_above_shoulder = hand_center_y < (shoulder_reference_y - self.shoulder_offset_threshold)
+        print(f"   Is above shoulder: {is_above_shoulder}")
         
         # Check if palm is facing camera (positive Z component in normal vector)
-        is_palm_facing_camera = palm_normal_vector[2] >= self.palm_facing_confidence
+        palm_z_component = palm_normal_vector[2]
+        is_palm_facing_camera = palm_z_component >= self.palm_facing_confidence
+        print(f"   Palm Z component: {palm_z_component:.3f}")
+        print(f"   Palm facing threshold: {self.palm_facing_confidence:.3f}")
+        print(f"   Is palm facing camera: {is_palm_facing_camera}")
         
         # Both conditions must be met for hand up gesture
-        # Convert numpy boolean to Python boolean for consistency
-        return bool(is_above_shoulder and is_palm_facing_camera)
+        gesture_detected = bool(is_above_shoulder and is_palm_facing_camera)
+        print(f"   FINAL GESTURE RESULT: {gesture_detected}")
+        
+        return gesture_detected
     
     def calculate_gesture_confidence(self, hand_landmarks: List[Any], 
                                    shoulder_reference_y: float, 
