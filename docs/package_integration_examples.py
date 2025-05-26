@@ -247,226 +247,278 @@ def example_home_automation():
 
 
 # ============================================================================
-# Example 4: Real-time WebSocket Integration
+# Example 4: Enhanced Service Integration (Recommended)
 # ============================================================================
 
-async def example_websocket_client():
-    """Example WebSocket client for real-time presence updates."""
-    import websockets
-    import json
+def example_enhanced_service_integration():
+    """
+    Example showing the enhanced service with HTTP + Gesture Recognition + SSE.
     
-    uri = "ws://localhost:8765/ws/home_automation"
+    The enhanced service provides:
+    - HTTP API (port 8767): Human presence detection
+    - SSE Events (port 8766): Real-time gesture streaming  
+    - Gesture Recognition: Hand up detection with palm analysis
+    - Clean Console Output: Single updating status line (no scroll spam)
+    """
     
+    # Start enhanced service (in production, this would be a separate process)
+    import subprocess
+    import threading
+    
+    def start_enhanced_service():
+        """Start the enhanced webcam detection service."""
+        # In production, you might use systemd, Docker, or process manager
+        subprocess.run([
+            "conda", "activate", "webcam", "&&", 
+            "python", "webcam_enhanced_service.py"
+        ])
+    
+    # Start service in background
+    service_thread = threading.Thread(target=start_enhanced_service, daemon=True)
+    service_thread.start()
+    
+    # Wait for service to start
+    time.sleep(3)
+    
+    # Test HTTP API
+    print("Testing Enhanced HTTP API:")
     try:
-        async with websockets.connect(uri) as websocket:
-            print("🔌 Connected to presence WebSocket")
+        # Simple presence check
+        response = requests.get("http://localhost:8767/presence/simple")
+        if response.status_code == 200:
+            presence = response.json()
+            print(f"  Human present: {presence.get('human_present')}")
+        
+        # Detailed presence info
+        response = requests.get("http://localhost:8767/presence")
+        if response.status_code == 200:
+            details = response.json()
+            print(f"  Confidence: {details.get('confidence', 0):.2f}")
+            print(f"  Last detection: {details.get('last_detection')}")
+        
+        # Service health
+        response = requests.get("http://localhost:8767/health")
+        if response.status_code == 200:
+            health = response.json()
+            print(f"  Service status: {health.get('status')}")
+            print(f"  Uptime: {health.get('uptime_seconds', 0):.1f}s")
             
-            # Send subscription message
-            subscribe_msg = {
-                "type": "subscribe",
-                "event_types": ["presence_changed", "detection_update"]
-            }
-            await websocket.send(json.dumps(subscribe_msg))
-            print("📡 Subscribed to presence events")
-            
-            # Listen for events
-            while True:
-                try:
-                    message = await websocket.recv()
-                    event_data = json.loads(message)
-                    
-                    if event_data.get("event_type") == "presence_changed":
-                        data = event_data.get("data", {})
-                        print(f"🔄 Presence changed: {data.get('human_present')}")
-                        
-                    elif event_data.get("event_type") == "detection_update":
-                        data = event_data.get("data", {})
-                        print(f"📊 Detection update: {data.get('confidence', 0):.2f}")
-                        
-                except websockets.exceptions.ConnectionClosed:
-                    print("🔌 WebSocket connection closed")
-                    break
-                    
-    except Exception as e:
-        print(f"❌ WebSocket error: {e}")
-
-
-# ============================================================================
-# Example 5: Service Layer Integration
-# ============================================================================
-
-def example_service_integration():
-    """Example of running the detection system as a service."""
-    from webcam_detection.service import DetectionServiceManager, HTTPServiceConfig
-    from webcam_detection import create_detector
-    import cv2
+    except requests.RequestException as e:
+        print(f"  HTTP API error: {e}")
     
-    async def run_service():
-        # Create detection system
-        detector = create_detector('multimodal')
-        detector.initialize()
+    # Test gesture events via SSE
+    async def test_gesture_events():
+        """Test real-time gesture event streaming."""
+        import aiohttp
         
-        # Create camera
-        cap = cv2.VideoCapture(0)
+        print("\nTesting Gesture SSE Events:")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get('http://localhost:8766/events/gestures/test_client') as resp:
+                    print("  Connected to gesture event stream")
+                    
+                    # Listen for a few events (timeout after 10 seconds)
+                    start_time = time.time()
+                    async for line in resp.content:
+                        if time.time() - start_time > 10:
+                            break
+                            
+                        if line.startswith(b'data: '):
+                            event_data = line[6:].decode().strip()
+                            if event_data and event_data != '[HEARTBEAT]':
+                                import json
+                                try:
+                                    gesture_event = json.loads(event_data)
+                                    print(f"  Gesture event: {gesture_event['data']['gesture_type']} "
+                                          f"(conf: {gesture_event['data']['confidence']:.2f})")
+                                except json.JSONDecodeError:
+                                    pass
+                                    
+        except Exception as e:
+            print(f"  SSE error: {e}")
+    
+    # Run gesture test
+    try:
+        asyncio.run(test_gesture_events())
+    except Exception as e:
+        print(f"Gesture test failed: {e}")
+    
+    print("\nEnhanced service integration complete!")
+    print("Console shows: 🎥 Frame X | 👤 Human: YES/NO | 🖐️ Gesture: type | FPS: X")
+
+
+# ============================================================================
+# Example 5: Voice Bot Integration with Gesture Control
+# ============================================================================
+
+class VoiceBotWithGestureControl:
+    """Voice bot that uses presence detection and gesture control."""
+    
+    def __init__(self):
+        self.voice_active = False
+        self.gesture_listener_task = None
+        self.presence_service = "http://localhost:8767"
+        self.gesture_service = "http://localhost:8766"
+    
+    def check_human_presence(self) -> bool:
+        """Check if human is present before starting voice bot."""
+        try:
+            response = requests.get(f"{self.presence_service}/presence/simple", timeout=1.0)
+            return response.json().get("human_present", False)
+        except:
+            return False
+    
+    async def start_voice_bot_with_gesture_control(self):
+        """Start voice bot with gesture-based stop control."""
+        if not self.check_human_presence():
+            print("No human detected - voice bot not started")
+            return
         
-        # Create service manager
-        manager = DetectionServiceManager()
+        # Start voice bot
+        self.voice_active = True
+        print("🎤 Voice bot started - raise hand to stop")
         
-        # Add HTTP service for guard clauses
-        http_config = HTTPServiceConfig(
-            host="localhost",
-            port=8767,
-            enable_history=True,
-            history_limit=1000
-        )
-        http_service = manager.add_http_service(http_config)
+        # Start gesture listener
+        self.gesture_listener_task = asyncio.create_task(self.listen_for_stop_gestures())
+        
+        # Simulate voice bot processing
+        while self.voice_active:
+            print("🔊 Voice bot processing... (raise hand to stop)")
+            await asyncio.sleep(2)
+            
+        print("🛑 Voice bot stopped")
+    
+    async def listen_for_stop_gestures(self):
+        """Listen for hand up gestures to stop voice bot."""
+        import aiohttp
         
         try:
-            print("🚀 Starting detection service...")
-            await manager.start_all_services()
-            print("✅ Service running on http://localhost:8767")
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'{self.gesture_service}/events/gestures/voice_bot') as resp:
+                    async for line in resp.content:
+                        if not self.voice_active:
+                            break
+                            
+                        if line.startswith(b'data: '):
+                            event_data = line[6:].decode().strip()
+                            if event_data and event_data != '[HEARTBEAT]':
+                                import json
+                                try:
+                                    gesture_event = json.loads(event_data)
+                                    if gesture_event['data']['gesture_type'] == 'hand_up':
+                                        print("🖐️ Hand up detected - stopping voice bot")
+                                        self.voice_active = False
+                                        break
+                                except json.JSONDecodeError:
+                                    pass
+        except Exception as e:
+            print(f"Gesture listener error: {e}")
+
+
+async def example_voice_bot_integration():
+    """Example of voice bot with gesture control."""
+    bot = VoiceBotWithGestureControl()
+    await bot.start_voice_bot_with_gesture_control()
+
+
+def example_service_integration():
+    """Example showing production service integration patterns."""
+    print("Enhanced Service Integration Examples")
+    print("====================================")
+    
+    # Test enhanced service
+    example_enhanced_service_integration()
+    
+    print("\nVoice Bot Integration Example")
+    print("============================")
+    
+    # Test voice bot integration
+    try:
+        asyncio.run(example_voice_bot_integration())
+    except KeyboardInterrupt:
+        print("Voice bot integration stopped by user")
+    except Exception as e:
+        print(f"Voice bot integration error: {e}")
+    
+    # Original service integration for compatibility
+    async def run_service():
+        # Create detection system
+        from webcam_detection import create_detector
+        from webcam_detection.camera import CameraManager, CameraConfig
+        
+        camera = CameraManager(CameraConfig())
+        detector = create_detector('multimodal')
+        
+        try:
+            detector.initialize()
             
-            # Simulate detection loop
-            for i in range(100):
-                # Get frame from camera
-                ret, frame = cap.read()
-                
-                if ret:
-                    # Perform detection with current API
+            # Simple detection loop
+            for i in range(5):
+                frame = camera.get_frame()
+                if frame is not None:
                     result = detector.detect(frame)
-                    
-                    # Publish to service layer
-                    manager.publish_detection_result(result)
-                else:
-                    print("Warning: No camera frame available")
-                
-                await asyncio.sleep(1)  # 1 FPS for demo
+                    print(f"Frame {i+1}: Human={result.human_present}, Conf={result.confidence:.2f}")
+                await asyncio.sleep(1)
                 
         finally:
-            print("🛑 Stopping services...")
-            await manager.stop_all_services()
-            cap.release()
             detector.cleanup()
+            camera.cleanup()
     
-    # Run the service
-    asyncio.run(run_service())
-
-
-# ============================================================================
-# Example 6: Package Configuration
-# ============================================================================
-
-def example_package_configuration():
-    """Example of configuring the package for different environments."""
-    from webcam_detection.utils.config import ConfigManager
-    
-    # Load configuration
-    config_manager = ConfigManager()
-    
-    # Production configuration
-    production_config = {
-        'detection': {
-            'detector_type': 'multimodal',
-            'confidence_threshold': 0.7,  # Higher for production
-            'pose_weight': 0.6,
-            'face_weight': 0.4
-        },
-        'service': {
-            'http': {
-                'host': '0.0.0.0',  # Accept external connections
-                'port': 8767,
-                'enable_history': True,
-                'history_limit': 5000
-            },
-            'rate_limiting': {
-                'requests_per_second': 100,
-                'burst_limit': 200
-            }
-        }
-    }
-    
-    # Development configuration
-    development_config = {
-        'detection': {
-            'detector_type': 'multimodal',
-            'confidence_threshold': 0.5,  # Lower for testing
-            'pose_weight': 0.6,
-            'face_weight': 0.4
-        },
-        'service': {
-            'http': {
-                'host': 'localhost',
-                'port': 8767,
-                'enable_history': True,
-                'history_limit': 1000
-            },
-            'rate_limiting': {
-                'requests_per_second': 10,
-                'burst_limit': 20
-            }
-        }
-    }
-    
-    # Use appropriate config based on environment
-    import os
-    env = os.getenv('ENVIRONMENT', 'development')
-    
-    if env == 'production':
-        config = production_config
-        print("📦 Using production configuration")
-    else:
-        config = development_config
-        print("🔧 Using development configuration")
-    
-    return config
-
-
-# ============================================================================
-# Example 7: Testing Integration
-# ============================================================================
-
-def example_testing_integration():
-    """Example of testing applications that use webcam-detection."""
-    import pytest
-    from unittest.mock import Mock, patch
-    
-    # Mock the detection service for testing
-    @patch('webcam_detection.create_detector')
-    def test_speaker_verification_with_presence(mock_create_detector):
-        # Setup mock detector
-        mock_detector = Mock()
+    print("\nDirect Detection Integration Example")
+    print("===================================")
+    try:
+        asyncio.run(run_service())
+    except Exception as e:
+        print(f"Direct detection error: {e}")
         
-        # Mock DetectionResult object instead of tuple
-        from webcam_detection.detection.result import DetectionResult
-        mock_result = DetectionResult(
+
+# ============================================================================
+# Enhanced Testing Integration
+# ============================================================================
+
+def example_enhanced_testing_integration():
+    """Enhanced testing example with gesture recognition."""
+    from unittest.mock import patch, MagicMock
+    
+    @patch('webcam_detection.create_detector')
+    def test_enhanced_speaker_verification(mock_create_detector):
+        # Setup mock detector with gesture support
+        mock_detector = MagicMock()
+        mock_detector.detect.return_value = MagicMock(
             human_present=True,
             confidence=0.85,
-            bounding_box=[100, 100, 200, 300],
             landmarks={'pose': [], 'face': []}
         )
-        mock_detector.detect.return_value = mock_result
         mock_create_detector.return_value = mock_detector
         
-        # Test your application logic
+        # Test presence-based processing
         guard = SpeakerVerificationGuard()
         
-        # Mock the HTTP request
+        # Mock HTTP responses for enhanced service
         with patch('requests.get') as mock_get:
-            mock_response = Mock()
+            # Mock presence response
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = {
                 "human_present": True,
-                "confidence": 0.85
+                "confidence": 0.85,
+                "detection_type": "multimodal",
+                "gesture_detected": False
             }
             mock_get.return_value = mock_response
             
             # Test guard clause
-            result = guard.should_process_audio()
-            assert result is True
+            should_process = guard.should_process_audio()
+            assert should_process == True
+            
+            # Test detailed info
+            details = guard.get_presence_details()
+            assert details["human_present"] == True
+            assert details["confidence"] == 0.85
+            
+        print("✓ Enhanced testing integration passed")
     
-    # Run the test
-    test_speaker_verification_with_presence()
-    print("✅ Test passed!")
+    test_enhanced_speaker_verification()
 
 
 # ============================================================================

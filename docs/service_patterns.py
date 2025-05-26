@@ -9,12 +9,26 @@ system as a service that other applications can consume. Patterns include:
 2. Server-Sent Events (SSE) (Real-time server-to-client streaming)
 3. Simple HTTP API (REST-like for polling)
 4. Background Service Manager (Service lifecycle management)
+5. Enhanced Production Service (HTTP + Gesture Recognition + SSE)
+
+RECOMMENDED PRODUCTION SERVICE:
+Start with: conda activate webcam && python webcam_enhanced_service.py
+
+Features:
+- HTTP API (port 8767): Human presence detection with REST endpoints
+- SSE Events (port 8766): Real-time gesture streaming  
+- Gesture Recognition: Hand up detection with palm analysis
+- Clean Console Output: Single updating status line (no scroll spam)
+
+Console Output Example:
+🎥 Frame 1250 | 👤 Human: YES (conf: 0.72) | 🖐️ Gesture: hand_up (conf: 0.95) | FPS: 28.5
 
 Use Cases:
 - Speaker verification guard clause integration
 - Real-time presence monitoring dashboards
 - Home automation system integration
 - Multi-application presence sharing
+- Voice bot gesture control (hand up to pause/stop)
 """
 
 from abc import ABC, abstractmethod

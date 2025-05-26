@@ -43,7 +43,12 @@ Webcam Detection provides a comprehensive, local-processing human presence detec
 - **Smart Home**: Gesture-based automation triggers
 - **Security Systems**: Gesture-based alerts and controls
 
-📋 **ACHIEVED**: 414 comprehensive tests passing ✅ | Architecture documented | Reference samples ready | Production deployment
+### 🧹 Clean Console Output
+- **Single Status Line**: Updates in place without scrolling console spam
+- **Essential Info**: Shows human detection, confidence, gesture status, and frame count
+- **No Log Firehose**: Eliminated verbose logging for clean operation
+
+📋 **ACHIEVED**: 414 comprehensive tests passing ✅ | Clean console output ✅ | Production deployment ✅
 
 ## 📦 Installation
 
@@ -121,45 +126,27 @@ class AudioProcessor:
 
 ### HTTP Service (Production Ready)
 
-Start the webcam detection HTTP service:
+Start the enhanced webcam detection service with both HTTP API and gesture recognition:
 
 ```bash
 conda activate webcam
-python webcam_http_service.py
+python webcam_enhanced_service.py
 ```
 
-The service provides REST endpoints for human presence detection:
+The service provides:
+- **HTTP API** (port 8767): Human presence detection with REST endpoints
+- **SSE Events** (port 8766): Real-time gesture event streaming  
+- **Clean Console**: Single updating status line without scroll spam
+
+**Primary Endpoints:**
 - **Primary**: `GET http://localhost:8767/presence/simple` → `{"human_present": true/false}`
 - **Full status**: `GET http://localhost:8767/presence` → Complete detection details
 - **Health check**: `GET http://localhost:8767/health` → Service status
-- **Performance**: `GET http://localhost:8767/statistics` → Metrics
-- **History**: `GET http://localhost:8767/history` → Detection history (optional)
+- **Gesture events**: `GET http://localhost:8766/events/gestures/client_id` → SSE stream
 
-### Integration Examples
-
-#### Guard Clause Pattern (Speaker Verification, etc.)
-```python
-import requests
-
-def should_process_audio() -> bool:
-    """Check if human is present before processing audio."""
-    try:
-        response = requests.get("http://localhost:8767/presence/simple", timeout=1.0)
-        return response.json().get("human_present", False)
-    except:
-        return True  # Fail safe
+**Console Output:** Clean single-line status that updates every 2 seconds:
 ```
-
-#### Smart Home Integration
-```python
-import requests
-
-def trigger_automation():
-    """Trigger smart home actions based on presence."""
-    response = requests.get("http://localhost:8767/presence/simple")
-    if response.json().get("human_present"):
-        # Human detected - turn on lights, start music, etc.
-        activate_home_automation()
+🎥 Frame 1250 | 👤 Human: YES (conf: 0.72) | 🖐️ Gesture: hand_up (conf: 0.95) | FPS: 28.5
 ```
 
 ## 🔧 Detection Types
@@ -186,25 +173,39 @@ detector = create_detector('mediapipe')
 
 ## 🛠️ Service Layer
 
-Run the service layer for easy integration with other applications:
+Run the enhanced service for both human detection and gesture recognition:
 
 ```bash
-python -m webcam_detection.service --enable-http --enable-websocket
+conda activate webcam && python webcam_enhanced_service.py
 ```
 
-### Available Endpoints
+### Available Services
 
 #### HTTP API (Port 8767)
 - `GET /presence/simple` - Simple boolean presence check
-- `GET /presence/detailed` - Full detection information
+- `GET /presence` - Full detection information  
 - `GET /health` - Service health check
 - `GET /statistics` - Performance metrics
 
-#### WebSocket (Port 8765)
-Real-time presence updates for interactive applications.
-
 #### Server-Sent Events (Port 8766) ✅ IMPLEMENTED
-Real-time gesture event streaming for web dashboards and gesture-based applications.
+Real-time gesture event streaming:
+- `GET /events/gestures/{client_id}` - Gesture event stream
+- Real-time hand up detection events
+- Multiple client support with automatic cleanup
+
+**Sample Gesture Event:**
+```json
+{
+  "event_type": "gesture_detected",
+  "timestamp": "2024-01-15T10:30:00Z", 
+  "data": {
+    "gesture_type": "hand_up",
+    "confidence": 0.95,
+    "hand": "right",
+    "duration_ms": 1250
+  }
+}
+```
 
 ## 📊 Performance
 
@@ -369,3 +370,92 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ---
 
 *Built with ❤️ for developers who need reliable, local human detection.* 
+
+## 🔧 Integration Examples
+
+### Real-time Gesture Events
+```python
+import asyncio
+import aiohttp
+
+async def listen_for_gestures():
+    """Listen for real-time gesture events via SSE."""
+    async with aiohttp.ClientSession() as session:
+        async with session.get('http://localhost:8766/events/gestures/my_app') as resp:
+            async for line in resp.content:
+                if line.startswith(b'data: '):
+                    event_data = line[6:].decode().strip()
+                    if event_data and event_data != '[HEARTBEAT]':
+                        import json
+                        gesture_event = json.loads(event_data)
+                        print(f"Gesture detected: {gesture_event}")
+                        # Process gesture event
+                        if gesture_event['data']['gesture_type'] == 'hand_up':
+                            # Handle hand up gesture (e.g., pause voice bot)
+                            handle_hand_up_gesture()
+
+# Run gesture listener
+asyncio.run(listen_for_gestures())
+```
+
+### Combined Presence + Gesture Integration
+```python
+import requests
+import asyncio
+import aiohttp
+
+class VoiceBotController:
+    def __init__(self):
+        self.voice_bot_active = False
+        self.gesture_listener_task = None
+    
+    def check_human_presence(self):
+        """Check if human is present before starting voice bot."""
+        try:
+            response = requests.get("http://localhost:8767/presence/simple", timeout=1.0)
+            return response.json().get("human_present", False)
+        except:
+            return False
+    
+    async def start_voice_bot_with_gesture_control(self):
+        """Start voice bot with gesture-based stop control."""
+        if not self.check_human_presence():
+            print("No human detected - voice bot not started")
+            return
+        
+        # Start voice bot
+        self.voice_bot_active = True
+        print("Voice bot started - raise hand to stop")
+        
+        # Start gesture listener
+        self.gesture_listener_task = asyncio.create_task(self.listen_for_stop_gestures())
+        
+        # Your voice bot logic here
+        await self.run_voice_bot()
+    
+    async def listen_for_stop_gestures(self):
+        """Listen for hand up gestures to stop voice bot."""
+        async with aiohttp.ClientSession() as session:
+            async with session.get('http://localhost:8766/events/gestures/voice_bot') as resp:
+                async for line in resp.content:
+                    if line.startswith(b'data: '):
+                        event_data = line[6:].decode().strip()
+                        if event_data and event_data != '[HEARTBEAT]':
+                            import json
+                            gesture_event = json.loads(event_data)
+                            if gesture_event['data']['gesture_type'] == 'hand_up':
+                                print("Hand up detected - stopping voice bot")
+                                self.voice_bot_active = False
+                                break
+    
+    async def run_voice_bot(self):
+        """Main voice bot loop."""
+        while self.voice_bot_active:
+            # Your voice processing logic
+            await asyncio.sleep(0.1)
+        print("Voice bot stopped")
+
+# Usage
+controller = VoiceBotController()
+asyncio.run(controller.start_voice_bot_with_gesture_control())
+```

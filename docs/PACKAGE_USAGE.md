@@ -145,23 +145,103 @@ finally:
 
 ### 2. Production HTTP Service (Recommended)
 ```python
-# Start the production service
+# Start the enhanced production service (HTTP + Gesture Recognition + SSE)
 import subprocess
 
 # Option 1: Direct service execution
-subprocess.run(["python", "webcam_http_service.py"])
+subprocess.run(["conda", "activate", "webcam", "&&", "python", "webcam_enhanced_service.py"])
 
 # Option 2: Background service
 import threading
 
-def start_detection_service():
-    subprocess.run(["python", "webcam_http_service.py"])
+def start_enhanced_detection_service():
+    subprocess.run(["conda", "activate", "webcam", "&&", "python", "webcam_enhanced_service.py"])
 
-service_thread = threading.Thread(target=start_detection_service, daemon=True)
+service_thread = threading.Thread(target=start_enhanced_detection_service, daemon=True)
 service_thread.start()
+
+# Clean console output - single updating status line:
+# 🎥 Frame 1250 | 👤 Human: YES (conf: 0.72) | 🖐️ Gesture: hand_up (conf: 0.95) | FPS: 28.5
 ```
 
-### 3. Speaker Verification Guard Clause (Production Pattern)
+### 3. Enhanced Service Features
+```python
+import requests
+import asyncio
+import aiohttp
+
+# HTTP API for presence detection
+def check_human_presence():
+    """Check if human is present using HTTP API."""
+    try:
+        response = requests.get("http://localhost:8767/presence/simple", timeout=1.0)
+        return response.json().get("human_present", False)
+    except:
+        return False
+
+# Real-time gesture events via SSE
+async def listen_for_gesture_events():
+    """Listen for real-time gesture events."""
+    async with aiohttp.ClientSession() as session:
+        async with session.get('http://localhost:8766/events/gestures/my_app') as resp:
+            async for line in resp.content:
+                if line.startswith(b'data: '):
+                    event_data = line[6:].decode().strip()
+                    if event_data and event_data != '[HEARTBEAT]':
+                        import json
+                        gesture_event = json.loads(event_data)
+                        if gesture_event['data']['gesture_type'] == 'hand_up':
+                            print("Hand up gesture detected!")
+                            # Handle gesture (e.g., pause voice bot)
+                            handle_hand_up_gesture()
+
+def handle_hand_up_gesture():
+    """Handle hand up gesture (e.g., pause voice processing)."""
+    print("Pausing voice processing due to hand up gesture")
+    # Your gesture handling logic here
+
+# Combined presence + gesture integration
+class VoiceBotController:
+    def __init__(self):
+        self.voice_active = False
+        
+    def should_start_voice_bot(self):
+        """Only start voice bot if human present."""
+        return check_human_presence()
+    
+    async def start_with_gesture_control(self):
+        """Start voice bot with gesture-based stop control."""
+        if not self.should_start_voice_bot():
+            print("No human detected")
+            return
+            
+        self.voice_active = True
+        print("Voice bot started - raise hand to stop")
+        
+        # Start gesture listener
+        gesture_task = asyncio.create_task(self.listen_for_stop_gestures())
+        
+        # Your voice bot logic here
+        while self.voice_active:
+            await asyncio.sleep(0.1)
+    
+    async def listen_for_stop_gestures(self):
+        """Listen for hand up gestures to stop voice bot."""
+        async with aiohttp.ClientSession() as session:
+            async with session.get('http://localhost:8766/events/gestures/voice_bot') as resp:
+                async for line in resp.content:
+                    if line.startswith(b'data: '):
+                        event_data = line[6:].decode().strip()
+                        if event_data and event_data != '[HEARTBEAT]':
+                            import json
+                            gesture_event = json.loads(event_data)
+                            if gesture_event['data']['gesture_type'] == 'hand_up':
+                                print("Hand up detected - stopping voice bot")
+                                self.voice_active = False
+                                break
+```
+
+### 4. Speaker Verification Guard Clause (Production Pattern)
 ```python
 import requests
 

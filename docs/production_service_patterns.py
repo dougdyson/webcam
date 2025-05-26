@@ -7,16 +7,29 @@ the webcam detection HTTP service. These patterns are battle-tested
 and reflect the actual production implementation.
 
 Key Features:
-- Production-ready webcam_http_service.py integration
+- Production-ready webcam_enhanced_service.py integration (RECOMMENDED)
 - Speaker verification guard clause patterns
-- Real-time presence monitoring
+- Real-time presence monitoring + gesture recognition
 - Error handling and fail-safe patterns
 - Performance optimized for production use
+- Clean console output (single updating status line)
 
 Installation:
     pip install webcam-detection[service]
 
-Service Startup:
+Service Startup (RECOMMENDED):
+    conda activate webcam && python webcam_enhanced_service.py
+
+Features:
+- HTTP API (port 8767): Human presence detection with REST endpoints
+- SSE Events (port 8766): Real-time gesture streaming  
+- Gesture Recognition: Hand up detection with palm analysis
+- Clean Console Output: Single updating status line (no scroll spam)
+
+Console Output Example:
+🎥 Frame 1250 | 👤 Human: YES (conf: 0.72) | 🖐️ Gesture: hand_up (conf: 0.95) | FPS: 28.5
+
+Alternative (HTTP-only):
     python webcam_http_service.py
 """
 
@@ -35,10 +48,13 @@ import logging
 # ============================================================================
 
 class WebcamDetectionService:
-    """Production service manager for webcam detection HTTP service."""
+    """Production service manager for webcam detection enhanced service."""
     
-    def __init__(self, service_url: str = "http://localhost:8767"):
+    def __init__(self, 
+                 service_url: str = "http://localhost:8767",
+                 use_enhanced_service: bool = True):
         self.service_url = service_url
+        self.use_enhanced_service = use_enhanced_service
         self.process = None
         self.logger = logging.getLogger(__name__)
         
@@ -48,21 +64,37 @@ class WebcamDetectionService:
             if background:
                 # Start service in background thread
                 def run_service():
-                    self.process = subprocess.Popen(
-                        ["python", "webcam_http_service.py"],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE
-                    )
+                    if self.use_enhanced_service:
+                        # Enhanced service with gesture recognition + clean console
+                        self.process = subprocess.Popen(
+                            ["conda", "activate", "webcam", "&&", "python", "webcam_enhanced_service.py"],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            shell=True
+                        )
+                    else:
+                        # HTTP-only service (alternative)
+                        self.process = subprocess.Popen(
+                            ["python", "webcam_http_service.py"],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE
+                        )
                     self.process.wait()
                 
                 service_thread = threading.Thread(target=run_service, daemon=True)
                 service_thread.start()
                 
                 # Wait for service to be ready
-                return self._wait_for_service_ready(timeout=10)
+                return self._wait_for_service_ready(timeout=15)  # Enhanced service takes longer to start
             else:
                 # Start service in foreground
-                self.process = subprocess.run(["python", "webcam_http_service.py"])
+                if self.use_enhanced_service:
+                    self.process = subprocess.run([
+                        "conda", "activate", "webcam", "&&", 
+                        "python", "webcam_enhanced_service.py"
+                    ], shell=True)
+                else:
+                    self.process = subprocess.run(["python", "webcam_http_service.py"])
                 return True
                 
         except Exception as e:

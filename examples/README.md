@@ -6,9 +6,14 @@ Quick-start examples for getting up and running with webcam-detection package.
 
 **For Production Use:**
 
-1. **Start the HTTP service:**
+1. **Start the enhanced service (HTTP + Gesture Recognition + SSE):**
    ```bash
-   python webcam_http_service.py
+   conda activate webcam && python webcam_enhanced_service.py
+   ```
+   
+   **Clean Console Output:** Single updating status line (no scroll spam):
+   ```
+   🎥 Frame 1250 | 👤 Human: YES (conf: 0.72) | 🖐️ Gesture: hand_up (conf: 0.95) | FPS: 28.5
    ```
 
 2. **Use HTTP guard clause in your code:**
@@ -21,6 +26,21 @@ Quick-start examples for getting up and running with webcam-detection package.
            return response.json().get("human_present", False)
        except:
            return True  # Fail safe
+   ```
+
+3. **Listen for gesture events (optional):**
+   ```python
+   import asyncio
+   import aiohttp
+   
+   async def listen_for_gestures():
+       async with aiohttp.ClientSession() as session:
+           async with session.get('http://localhost:8766/events/gestures/my_app') as resp:
+               async for line in resp.content:
+                   if line.startswith(b'data: '):
+                       event_data = line[6:].decode().strip()
+                       if event_data and event_data != '[HEARTBEAT]':
+                           print(f"Gesture detected: {event_data}")
    ```
 
 ## 📁 What's Here
