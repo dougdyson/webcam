@@ -90,13 +90,15 @@ class EnhancedWebcamService:
             self.gesture_detector = GestureDetector()
             self.gesture_detector.initialize()
             
-            # Initialize enhanced frame processor (quiet)
+            # Initialize enhanced frame processor with DEBUG SCRIPT SPEED SETTINGS
             processor_config = EnhancedProcessorConfig(
-                min_human_confidence_for_gesture=0.6,  # Lowered back to be less strict
-                min_gesture_confidence_threshold=0.7,  # Lowered from 0.85 - easier gestures
+                min_human_confidence_for_gesture=0.3,  # SAME as debug script
+                min_gesture_confidence_threshold=0.2,  # Very low for easy detection
                 enable_gesture_detection=True,
                 publish_gesture_events=True,
-                performance_monitoring=True
+                performance_monitoring=True,
+                gesture_detection_every_n_frames=1,    # EVERY FRAME like debug script
+                max_gesture_fps=30.0                   # HIGH RATE like debug script
             )
             
             self.frame_processor = EnhancedFrameProcessor(
@@ -154,9 +156,11 @@ class EnhancedWebcamService:
             self.sse_service = None
     
     def detection_loop(self):
-        """Main detection loop running in separate thread."""        
+        """Main detection loop running in separate thread with performance optimizations."""        
         last_status_print = 0
         detection_count = 0
+        fps_target = 15  # Reduced from ~30 FPS for better performance
+        frame_time = 1.0 / fps_target  # ~0.067 seconds per frame
         
         while self.is_running and not self._shutdown_requested:
             try:
@@ -184,10 +188,10 @@ class EnhancedWebcamService:
                     current_time = time.time()
                     if current_time - last_status_print >= 2.0:
                         status = "👤 HUMAN" if detection_result.human_present else "❌ NO HUMAN"
-                        print(f"\r{status} | Conf: {detection_result.confidence:.2f} | Gesture: {gesture_status} | Frames: {detection_count}", end='', flush=True)
+                        print(f"\r{status} | Conf: {detection_result.confidence:.2f} | Gesture: {gesture_status} | Frames: {detection_count} | FPS: {fps_target}", end='', flush=True)
                         last_status_print = current_time
                     
-                    time.sleep(0.03)  # ~30 FPS
+                    time.sleep(frame_time)  # Target 15 FPS instead of 30
                 else:
                     time.sleep(0.1)  # Wait if no frame
                     

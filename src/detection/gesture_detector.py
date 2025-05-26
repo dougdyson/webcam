@@ -50,11 +50,16 @@ class GestureDetector(HumanDetector):
         # Gesture analysis components
         self._gesture_classifier = None
         
-        # Configuration for gesture detection
-        self._max_num_hands = 2  # Detect up to 2 hands
+        # Performance optimization settings - REMOVED for maximum speed
+        self._max_num_hands = 1  # Still efficient - detect one hand
+        self._frame_skip_count = 0
+        self._gesture_detection_interval = 1  # EVERY FRAME - no skipping like debug script
+        self._last_detection_time = 0
+        
+        # Configuration for gesture detection - MUCH MORE SENSITIVE
         self._gesture_config = {
-            'shoulder_offset_threshold': 0.15,  # Hand must be 15% above shoulder (more strict)
-            'palm_facing_confidence': 0.6,     # Lowered from 0.8 - easier palm detection
+            'shoulder_offset_threshold': 0.12,  # Hand must be 12% above shoulder
+            'palm_facing_confidence': 0.1,     # VERY LOW - much easier palm detection
         }
     
     def initialize(self) -> None:
@@ -71,13 +76,13 @@ class GestureDetector(HumanDetector):
             # Initialize MediaPipe hands
             self._mp_hands = mp.solutions.hands
             
-            # Create hands detection instance with BALANCED SETTINGS for good detection
+            # Create hands detection instance with OPTIMIZED SETTINGS for EASIER DETECTION
             self._hands_detector = self._mp_hands.Hands(
                 static_image_mode=False,  # Dynamic tracking for video
                 max_num_hands=self._max_num_hands,
-                model_complexity=1,  # Higher complexity for better accuracy
-                min_detection_confidence=0.5,  # Lowered from 0.7 - easier to detect hands
-                min_tracking_confidence=0.4    # Lowered from 0.6 - easier to track
+                model_complexity=0,  # REDUCED from 1 - much faster, good enough accuracy
+                min_detection_confidence=0.1,  # VERY LOW - much easier/faster detection
+                min_tracking_confidence=0.1    # VERY LOW - much easier tracking
             )
             
             # Initialize gesture classifier (no need for separate HandDetector)
@@ -129,7 +134,7 @@ class GestureDetector(HumanDetector):
     
     def detect_gestures(self, frame: np.ndarray, pose_landmarks: Optional[Any] = None) -> GestureResult:
         """
-        Detect hand gestures in a frame.
+        Detect hand gestures in a frame - NO THROTTLING for maximum speed like debug script.
         
         Args:
             frame: Input frame as numpy array (H, W, C) in BGR format
@@ -143,6 +148,9 @@ class GestureDetector(HumanDetector):
         """
         if not self.is_initialized:
             raise DetectorError("Detector not initialized. Call initialize() first.")
+        
+        # REMOVED: Frame skipping for maximum speed (like debug script)
+        # Process EVERY frame for best responsiveness
         
         # Validate frame format
         self._validate_frame(frame)
@@ -252,8 +260,7 @@ class GestureDetector(HumanDetector):
                         'hand_y': hand_center[1],
                         'palm_z_component': palm_normal[2]  # Show palm orientation instead of shoulder ref
                     },
-                    palm_facing_camera=palm_normal[2] >= self._gesture_config['palm_facing_confidence'],
-                    duration_ms=0.0 
+                    palm_facing_camera=palm_normal[2] >= self._gesture_config['palm_facing_confidence']
                 )
                 break # Process first detected gesture
         

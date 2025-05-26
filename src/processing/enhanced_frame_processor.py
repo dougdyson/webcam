@@ -24,11 +24,15 @@ from src.service.events import EventPublisher, ServiceEvent, EventType
 class EnhancedProcessorConfig:
     """Configuration for enhanced frame processor with gesture detection."""
     
-    # Gesture detection thresholds
-    min_human_confidence_for_gesture: float = 0.6
-    min_gesture_confidence_threshold: float = 0.8  # NEW: Filter out low-confidence gestures
+    # Gesture detection thresholds - MUCH MORE SENSITIVE
+    min_human_confidence_for_gesture: float = 0.4  # LOWERED from 0.6 - easier to trigger
+    min_gesture_confidence_threshold: float = 0.3  # VERY LOW from 0.7 - much easier detection
     enable_gesture_detection: bool = True
     publish_gesture_events: bool = True
+    
+    # Performance optimizations - MINIMAL THROTTLING for maximum speed
+    gesture_detection_every_n_frames: int = 1  # EVERY FRAME - no skipping
+    max_gesture_fps: float = 30.0  # HIGH RATE - maximum responsiveness
     
     # Performance monitoring
     performance_monitoring: bool = True
@@ -39,6 +43,10 @@ class EnhancedProcessorConfig:
             raise ValueError("min_human_confidence_for_gesture must be between 0.0 and 1.0")
         if not 0.0 <= self.min_gesture_confidence_threshold <= 1.0:
             raise ValueError("min_gesture_confidence_threshold must be between 0.0 and 1.0")
+        if self.gesture_detection_every_n_frames < 1:
+            raise ValueError("gesture_detection_every_n_frames must be >= 1")
+        if self.max_gesture_fps <= 0:
+            raise ValueError("max_gesture_fps must be > 0")
 
 
 class EnhancedFrameProcessor:
@@ -80,6 +88,10 @@ class EnhancedFrameProcessor:
         
         # NEW Phase 16.2: Gesture state tracking for GESTURE_LOST events
         self.previous_gesture_result: Optional[GestureResult] = None
+        
+        # Performance optimization counters
+        self._frame_count = 0
+        self._last_gesture_detection_time = 0.0
         
         self.logger = logging.getLogger(__name__)
     
@@ -166,7 +178,7 @@ class EnhancedFrameProcessor:
     
     def _should_run_gesture_detection(self, human_result: DetectionResult) -> bool:
         """
-        Determine if gesture detection should run based on human detection result.
+        Determine if gesture detection should run - OPTIMIZED FOR SPEED like debug script.
         
         Args:
             human_result: Result from human detection
@@ -182,6 +194,10 @@ class EnhancedFrameProcessor:
         
         if human_result.confidence < self.config.min_human_confidence_for_gesture:
             return False
+        
+        # REMOVED: Frame-based throttling for maximum speed
+        # REMOVED: Time-based throttling for maximum speed 
+        # Run gesture detection on EVERY frame when human present (like debug script)
         
         return True
     
