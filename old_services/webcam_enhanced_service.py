@@ -30,8 +30,14 @@ import threading
 import signal
 import sys
 import logging
+import os
 from typing import Optional
 from datetime import datetime
+
+# Suppress MediaPipe warnings for clean output
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+import warnings
+warnings.filterwarnings('ignore')
 
 # Core detection system
 from src.detection import create_detector
@@ -45,8 +51,8 @@ from src.service.http_service import HTTPDetectionService, HTTPServiceConfig
 from src.service.sse_service import SSEDetectionService, SSEServiceConfig
 from src.service.events import EventPublisher
 
-# Configure logging to be quieter
-logging.basicConfig(level=logging.WARNING, format='%(message)s')  # Only warnings and errors
+# Configure minimal logging
+logging.basicConfig(level=logging.WARNING, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
 class EnhancedWebcamService:
@@ -74,26 +80,30 @@ class EnhancedWebcamService:
         # State
         self.is_running = False
         self._shutdown_requested = False
+        self.frame_count = 0
+        self.last_status_time = time.time()
         
     def initialize(self):
         """Initialize all components with proper error handling."""
+        print("🚀 Initializing Enhanced Webcam Service with Gesture Recognition...")
+        
         try:
-            # Initialize camera (quiet)
+            # Initialize camera
             camera_config = CameraConfig()
             self.camera = CameraManager(camera_config)
+            # Note: CameraManager auto-initializes in constructor, no need to call initialize()
             
-            # Initialize multimodal detector (quiet)
+            # Initialize multimodal detector (best for range)
             self.detector = create_detector('multimodal')
             self.detector.initialize()
             
-            # Initialize gesture detector (quiet)
+            # Initialize gesture detector
             self.gesture_detector = GestureDetector()
             self.gesture_detector.initialize()
             
-            # Initialize enhanced frame processor (quiet)
+            # Initialize enhanced frame processor
             processor_config = EnhancedProcessorConfig(
-                min_human_confidence_for_gesture=0.6,  # Lowered back to be less strict
-                min_gesture_confidence_threshold=0.7,  # Lowered from 0.85 - easier gestures
+                min_human_confidence_for_gesture=0.6,  # Only detect gestures when confident human is present
                 enable_gesture_detection=True,
                 publish_gesture_events=True,
                 performance_monitoring=True
@@ -127,6 +137,8 @@ class EnhancedWebcamService:
             self.sse_service = SSEDetectionService(sse_config)
             self.sse_service.setup_gesture_integration(self.event_publisher)
             
+            print("✅ All components initialized!")
+            
         except Exception as e:
             logger.error(f"Failed to initialize enhanced service: {e}")
             # Clean up any partially initialized components
@@ -154,24 +166,14 @@ class EnhancedWebcamService:
             self.sse_service = None
     
     def detection_loop(self):
-        """Main detection loop running in separate thread."""        
-        last_status_print = 0
-        detection_count = 0
-        
+        """Main detection loop running in separate thread."""
         while self.is_running and not self._shutdown_requested:
             try:
                 # Get frame from camera
                 frame = self.camera.get_frame()
                 if frame is not None:
                     detection_result = self.frame_processor.process_frame(frame)
-                    detection_count += 1
-                    
-                    # Get gesture status from the previous result
-                    gesture_status = "None"
-                    if hasattr(self.frame_processor, 'previous_gesture_result') and self.frame_processor.previous_gesture_result:
-                        prev_gesture = self.frame_processor.previous_gesture_result
-                        if prev_gesture.gesture_detected:
-                            gesture_status = f"{prev_gesture.gesture_type} ({prev_gesture.confidence:.2f})"
+                    self.frame_count += 1
                     
                     # Update HTTP service status
                     if self.http_service:
@@ -180,22 +182,25 @@ class EnhancedWebcamService:
                         self.http_service.current_status.last_detection = datetime.now()
                         self.http_service.current_status.detection_count += 1
                     
-                    # Print status update every 2 seconds (single updating line)
+                    # Update status display every second
                     current_time = time.time()
-                    if current_time - last_status_print >= 2.0:
-                        status = "👤 HUMAN" if detection_result.human_present else "❌ NO HUMAN"
-                        print(f"\r{status} | Conf: {detection_result.confidence:.2f} | Gesture: {gesture_status} | Frames: {detection_count}", end='', flush=True)
-                        last_status_print = current_time
-                    
-                    time.sleep(0.03)  # ~30 FPS
-                else:
-                    time.sleep(0.1)  # Wait if no frame
-                    
+                    if current_time - self.last_status_time >= 1.0:
+                        human_status = "👤 Human" if detection_result.human_present else "   Empty"
+                        fps = self.frame_count / (current_time - self.last_status_time)
+                        confidence = detection_result.confidence if detection_result.human_present else 0.0
+                        
+                        # Single updating line
+                        print(f"\r{human_status} | Conf: {confidence:.2f} | FPS: {fps:.1f} | HTTP:8767 SSE:8766", end="", flush=True)
+                        
+                        self.frame_count = 0
+                        self.last_status_time = current_time
+                
+                # Reasonable frame rate
+                time.sleep(1/30)  # 30 FPS
+                
             except Exception as e:
                 logger.error(f"Detection loop error: {e}")
                 time.sleep(1)
-        
-        logger.info("Detection loop stopped")
     
     async def start_http_service(self):
         """Start HTTP service."""
@@ -206,10 +211,9 @@ class EnhancedWebcamService:
                     self.http_service.app, 
                     host="localhost", 
                     port=8767,
-                    log_level="warning"
+                    log_level="error"  # Minimal logging
                 )
                 server = uvicorn.Server(config)
-                logger.info("🚀 HTTP service starting on http://localhost:8767")
                 await server.serve()
             except Exception as e:
                 logger.error(f"HTTP service error: {e}")
@@ -223,40 +227,44 @@ class EnhancedWebcamService:
                     self.sse_service.app,
                     host="localhost",
                     port=8766,
-                    log_level="warning"
+                    log_level="error"  # Minimal logging
                 )
                 server = uvicorn.Server(config)
-                logger.info("📡 SSE service starting on http://localhost:8766")
                 await server.serve()
             except Exception as e:
                 logger.error(f"SSE service error: {e}")
     
     async def run(self):
-        """Run the enhanced service with all components."""
+        """Run the enhanced service."""
+        self.is_running = True
+        
+        # Start detection loop in background thread
+        detection_thread = threading.Thread(target=self.detection_loop, daemon=True)
+        detection_thread.start()
+        
+        print("\n🎯 Enhanced Webcam Service is Running!")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("📋 Services: HTTP:8767 (presence) | SSE:8766 (gestures)")
+        print("🎯 Features: Human detection + Hand gesture recognition")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("Press Ctrl+C to stop\n")
+        
         try:
-            # Initialize all components
-            self.initialize()
-            
-            self.is_running = True
-            
-            # Start detection loop in background thread
-            detection_thread = threading.Thread(target=self.detection_loop, daemon=True)
-            detection_thread.start()
-            
-            # Start both services concurrently
+            # Run both HTTP and SSE services concurrently
             await asyncio.gather(
                 self.start_http_service(),
                 self.start_sse_service()
             )
-            
+        except KeyboardInterrupt:
+            print("\n🛑 Shutdown requested")
         except Exception as e:
-            logger.error(f"Service startup error: {e}")
+            logger.error(f"Service error: {e}")
+        finally:
             await self.shutdown()
-            raise
     
     async def shutdown(self):
         """Shutdown the service gracefully."""
-        logger.info("🛑 Shutting down enhanced service...")
+        print("\n🛑 Shutting down enhanced service...")
         self._shutdown_requested = True
         self.is_running = False
         
@@ -268,12 +276,11 @@ class EnhancedWebcamService:
         if self.camera:
             self.camera.cleanup()
         
-        logger.info("✅ Enhanced service shutdown complete")
+        print("✅ Enhanced service shutdown complete")
     
     def setup_signal_handlers(self):
         """Setup signal handlers for graceful shutdown."""
         def signal_handler(signum, frame):
-            logger.info(f"Received signal {signum}, shutting down...")
             self._shutdown_requested = True
             sys.exit(0)
         
@@ -285,19 +292,13 @@ def main():
     service = EnhancedWebcamService()
     service.setup_signal_handlers()
     
-    print("🎯 Enhanced Webcam Detection Service with Gesture Recognition")
-    print("=" * 65)
-    print("HTTP API: http://localhost:8767 (presence detection)")
-    print("SSE Stream: http://localhost:8766 (gesture events)")
-    print("Press Ctrl+C to stop")
-    print()
-    
     try:
+        service.initialize()
         asyncio.run(service.run())
     except KeyboardInterrupt:
-        print("\n🛑 Service stopped by user")
+        print("\nService interrupted")
     except Exception as e:
-        print(f"\n❌ Service error: {e}")
+        logger.error(f"Service failed: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

@@ -53,8 +53,8 @@ class GestureDetector(HumanDetector):
         # Configuration for gesture detection
         self._max_num_hands = 2  # Detect up to 2 hands
         self._gesture_config = {
-            'shoulder_offset_threshold': 0.1,  # Hand must be 10% above shoulder
-            'palm_facing_confidence': 0.6,     # Z component threshold for facing camera
+            'shoulder_offset_threshold': 0.15,  # Hand must be 15% above shoulder (more strict)
+            'palm_facing_confidence': 0.6,     # Lowered from 0.8 - easier palm detection
         }
     
     def initialize(self) -> None:
@@ -71,13 +71,13 @@ class GestureDetector(HumanDetector):
             # Initialize MediaPipe hands
             self._mp_hands = mp.solutions.hands
             
-            # Create hands detection instance
+            # Create hands detection instance with BALANCED SETTINGS for good detection
             self._hands_detector = self._mp_hands.Hands(
-                static_image_mode=self.config.static_image_mode,
+                static_image_mode=False,  # Dynamic tracking for video
                 max_num_hands=self._max_num_hands,
-                model_complexity=self.config.model_complexity,
-                min_detection_confidence=self.config.min_detection_confidence,
-                min_tracking_confidence=self.config.min_tracking_confidence
+                model_complexity=1,  # Higher complexity for better accuracy
+                min_detection_confidence=0.5,  # Lowered from 0.7 - easier to detect hands
+                min_tracking_confidence=0.4    # Lowered from 0.6 - easier to track
             )
             
             # Initialize gesture classifier (no need for separate HandDetector)
@@ -204,141 +204,96 @@ class GestureDetector(HumanDetector):
         """
         Process MediaPipe hands results and classify gestures.
         
+        SIMPLIFIED: Just detect open palm facing camera (no shoulder reference needed).
+        
         Args:
             hands_results: MediaPipe hands detection results
-            pose_landmarks: Optional pose landmarks for shoulder reference
+            pose_landmarks: Optional pose landmarks (not used in simplified approach)
             frame_shape: Shape of the input frame (height, width, channels)
             
         Returns:
             GestureResult with gesture classification
         """
-        # Default result (no gesture detected)
-        gesture_result = GestureResult(
-            gesture_detected=False,
-            confidence=0.0
-        )
+        gesture_result = GestureResult(gesture_detected=False, confidence=0.0)
         
-        # DEBUG: Check if any hands were detected
         if not hands_results.multi_hand_landmarks:
-            print("🚫 No hands detected by MediaPipe")
             return gesture_result
         
-        print(f"✋ {len(hands_results.multi_hand_landmarks)} hands detected")
-        print(f"📍 Pose landmarks provided: {pose_landmarks is not None}")
-        
-        # Process each detected hand
-        for hand_idx, hand_landmarks in enumerate(hands_results.multi_hand_landmarks):
+        for hand_idx, hand_landmarks_mp in enumerate(hands_results.multi_hand_landmarks):
+            hand_label = "unknown"
+            if hands_results.multi_handedness and hand_idx < len(hands_results.multi_handedness):
+                hand_info = hands_results.multi_handedness[hand_idx]
+                hand_label = hand_info.classification[0].label.lower()
             
-            # Calculate palm normal vector for this hand
-            palm_normal = self._calculate_palm_normal(hand_landmarks)
-            print(f"🌊 Palm normal vector: {palm_normal}")
+            # Calculate palm normal vector
+            palm_normal = self._calculate_palm_normal(hand_landmarks_mp, hand_label)
             
-            # Try to detect "hand up" gesture
-            gesture_detected = False
-            confidence = 0.0
+            # SIMPLIFIED: Just check if palm is facing camera (no shoulder reference)
+            gesture_detected_for_this_hand = self._gesture_classifier.detect_open_palm_gesture(
+                hand_landmarks=hand_landmarks_mp.landmark,
+                palm_normal_vector=palm_normal
+            )
             
-            if pose_landmarks is not None:
-                # Use pose landmarks for shoulder reference (preferred)
-                print("🎯 Using pose landmarks for shoulder reference")
-                gesture_detected = self._gesture_classifier.detect_hand_up_gesture_with_pose(
-                    hand_landmarks=hand_landmarks.landmark,
-                    pose_landmarks=pose_landmarks,
+            if gesture_detected_for_this_hand:
+                # Calculate confidence based purely on palm orientation
+                confidence_for_this_hand = self._gesture_classifier.calculate_open_palm_confidence(
+                    hand_landmarks=hand_landmarks_mp.landmark,
                     palm_normal_vector=palm_normal
                 )
-                print(f"🔍 Gesture detected (with pose): {gesture_detected}")
                 
-                if gesture_detected:
-                    confidence = self._gesture_classifier.calculate_gesture_confidence(
-                        hand_landmarks=hand_landmarks.landmark,
-                        shoulder_reference_y=self._gesture_classifier.calculate_shoulder_reference(pose_landmarks),
-                        palm_normal_vector=palm_normal
-                    )
-                    print(f"📊 Confidence: {confidence}")
-            else:
-                # Fallback: use estimated shoulder position (less accurate)
-                print("📐 Using estimated shoulder position (fallback)")
-                estimated_shoulder_y = 0.4  # Approximate shoulder level
-                gesture_detected = self._gesture_classifier.detect_hand_up_gesture(
-                    hand_landmarks=hand_landmarks.landmark,
-                    shoulder_reference_y=estimated_shoulder_y,
-                    palm_normal_vector=palm_normal
-                )
-                print(f"🔍 Gesture detected (fallback): {gesture_detected}")
-                
-                if gesture_detected:
-                    confidence = self._gesture_classifier.calculate_gesture_confidence(
-                        hand_landmarks=hand_landmarks.landmark,
-                        shoulder_reference_y=estimated_shoulder_y,
-                        palm_normal_vector=palm_normal
-                    )
-                    print(f"📊 Confidence: {confidence}")
-            
-            # If gesture detected, update result
-            if gesture_detected:
-                # Determine which hand (left/right)
-                hand_label = "unknown"
-                if hands_results.multi_handedness:
-                    hand_info = hands_results.multi_handedness[hand_idx]
-                    hand_label = hand_info.classification[0].label.lower()
-                
-                # Get hand position
-                hand_center = self._get_hand_center(hand_landmarks)
-                
+                hand_center = self._get_hand_center(hand_landmarks_mp)
                 gesture_result = GestureResult(
                     gesture_detected=True,
-                    gesture_type="hand_up",
-                    confidence=confidence,
+                    gesture_type="hand_up",  # Keep original name for API compatibility
+                    confidence=confidence_for_this_hand,
                     hand=hand_label,
                     position={
                         'hand_x': hand_center[0],
                         'hand_y': hand_center[1],
-                        'shoulder_reference_y': self._gesture_classifier.calculate_shoulder_reference(pose_landmarks) if pose_landmarks else 0.4
+                        'palm_z_component': palm_normal[2]  # Show palm orientation instead of shoulder ref
                     },
                     palm_facing_camera=palm_normal[2] >= self._gesture_config['palm_facing_confidence'],
-                    duration_ms=0.0  # TODO: Implement duration tracking in future
+                    duration_ms=0.0 
                 )
-                
-                # Return first detected gesture (could extend to support multiple hands)
-                break
+                break # Process first detected gesture
         
         return gesture_result
     
-    def _calculate_palm_normal(self, hand_landmarks) -> np.ndarray:
+    def _calculate_palm_normal(self, hand_landmarks, hand_label: str = "unknown") -> np.ndarray:
         """
         Calculate palm normal vector from hand landmarks.
-        
         Uses cross product of vectors from wrist to index MCP and wrist to pinky MCP.
+        If hand_label is 'left', the normal is inverted.
         
         Args:
             hand_landmarks: MediaPipe hand landmarks
+            hand_label: The detected hand label ('left', 'right', or 'unknown').
             
         Returns:
             3D normal vector of palm surface
         """
         try:
-            # MediaPipe hand landmark indices:
-            # 0 = WRIST, 5 = INDEX_FINGER_MCP, 17 = PINKY_MCP
             wrist = np.array([hand_landmarks.landmark[0].x, hand_landmarks.landmark[0].y, hand_landmarks.landmark[0].z])
             index_mcp = np.array([hand_landmarks.landmark[5].x, hand_landmarks.landmark[5].y, hand_landmarks.landmark[5].z])
             pinky_mcp = np.array([hand_landmarks.landmark[17].x, hand_landmarks.landmark[17].y, hand_landmarks.landmark[17].z])
             
-            # Calculate vectors
             v1 = index_mcp - wrist
             v2 = pinky_mcp - wrist
-            
-            # Calculate normal using cross product
             normal = np.cross(v1, v2)
             
-            # Normalize the vector
-            norm = np.linalg.norm(normal)
-            if norm > 0:
-                normal = normal / norm
+            norm_val = np.linalg.norm(normal)
+            if norm_val > 0:
+                normal = normal / norm_val
+            
+            # Invert normal for 'left' hand as its coordinate system seems to be mirrored
+            if hand_label == 'left':
+                normal = -normal
+                # print(f"[DEBUG _calculate_palm_normal] Inverted normal for left hand. New Z: {normal[2]}")
             
             return normal
             
         except (IndexError, AttributeError):
-            # Fallback: return default facing-camera normal
-            return np.array([0.0, 0.0, 1.0])
+            return np.array([0.0, 0.0, 1.0]) # Default facing-camera normal
     
     def _get_hand_center(self, hand_landmarks) -> tuple:
         """

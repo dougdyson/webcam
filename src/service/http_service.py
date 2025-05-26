@@ -220,7 +220,7 @@ class HTTPDetectionService:
             host=self.config.host,
             port=self.config.port,
             log_level="info"
-        )
+        ) 
     
     # PRODUCTION INTEGRATION METHODS FOR PHASE 16.3
     

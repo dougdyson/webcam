@@ -26,6 +26,7 @@ class EnhancedProcessorConfig:
     
     # Gesture detection thresholds
     min_human_confidence_for_gesture: float = 0.6
+    min_gesture_confidence_threshold: float = 0.8  # NEW: Filter out low-confidence gestures
     enable_gesture_detection: bool = True
     publish_gesture_events: bool = True
     
@@ -36,6 +37,8 @@ class EnhancedProcessorConfig:
         """Validate configuration values."""
         if not 0.0 <= self.min_human_confidence_for_gesture <= 1.0:
             raise ValueError("min_human_confidence_for_gesture must be between 0.0 and 1.0")
+        if not 0.0 <= self.min_gesture_confidence_threshold <= 1.0:
+            raise ValueError("min_gesture_confidence_threshold must be between 0.0 and 1.0")
 
 
 class EnhancedFrameProcessor:
@@ -105,9 +108,6 @@ class EnhancedFrameProcessor:
                     if self.config.performance_monitoring:
                         self._performance_stats["gesture_detection_runs"] += 1
                     
-                    # DEBUG: Print when we're running gesture detection
-                    print(f"🖐️ Running gesture detection (human conf: {human_result.confidence:.2f})...")
-                    
                     # GESTURE FIX: Use original MediaPipe pose landmarks for gesture detection
                     # The human_result.landmarks contains converted tuples, but gesture detection needs
                     # the original MediaPipe landmarks object with .landmark attribute
@@ -119,16 +119,11 @@ class EnhancedFrameProcessor:
                         pose_landmarks=original_pose_landmarks
                     )
                     
-                    # DEBUG: Print gesture detection result
-                    if gesture_result:
-                        print(f"🔍 Gesture result: detected={gesture_result.gesture_detected}, type={gesture_result.gesture_type}, conf={gesture_result.confidence:.2f}")
-                    else:
-                        print("❌ Gesture detection returned None")
-                    
                     # Step 3: Publish gesture events if detected
                     if gesture_result and gesture_result.gesture_detected and self.config.publish_gesture_events:
-                        print(f"📡 Publishing gesture event: {gesture_result.gesture_type}")
-                        self._publish_gesture_event(gesture_result)
+                        # NEW: Filter by gesture confidence to prevent false positives
+                        if gesture_result.confidence >= self.config.min_gesture_confidence_threshold:
+                            self._publish_gesture_event(gesture_result)
                         
                     # NEW Phase 16.2: Check for GESTURE_LOST events
                     elif self.previous_gesture_result and self.previous_gesture_result.gesture_detected:
@@ -141,12 +136,11 @@ class EnhancedFrameProcessor:
                     
                 except Exception as e:
                     # Handle gesture detection errors gracefully
-                    print(f"❌ Gesture detection error: {e}")
+                    self.logger.error(f"Gesture detection error: {e}")
                     self._handle_gesture_detection_error(e)
                     
             else:
-                # Track skipped gesture detection
-                print(f"⏭️ Skipping gesture detection (human: {human_result.human_present}, conf: {human_result.confidence:.2f})")
+                # Track skipped gesture detection (silent)
                 if self.config.performance_monitoring:
                     self._performance_stats["gesture_detection_skipped"] += 1
             
@@ -211,22 +205,23 @@ class EnhancedFrameProcessor:
                 timestamp=datetime.now()
             )
             
-            # Publish event - use both sync and async for compatibility
-            self.event_publisher.publish(event)
+            # FIXED: Use async publishing to reach async subscribers (SSE service)
+            self.event_publisher.publish(event)  # Sync subscribers
             
-            # Also publish async for SSE service integration
+            # CRITICAL FIX: Schedule async publishing to reach SSE service
             import asyncio
             try:
+                # Get the current event loop and schedule async publishing
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
-                    # Create task if loop is already running
+                    # Schedule the async publishing as a task
                     asyncio.create_task(self.event_publisher.publish_async(event))
                 else:
-                    # Run if no loop is running
+                    # Run in new event loop if none running
                     asyncio.run(self.event_publisher.publish_async(event))
             except RuntimeError:
-                # Fallback to sync only if async fails
-                pass
+                # No event loop - create one and run async publishing
+                asyncio.run(self.event_publisher.publish_async(event))
             
             # Track performance
             if self.config.performance_monitoring:
@@ -255,22 +250,23 @@ class EnhancedFrameProcessor:
                 timestamp=datetime.now()
             )
             
-            # Publish event - use both sync and async for compatibility
-            self.event_publisher.publish(event)
+            # FIXED: Use async publishing to reach async subscribers (SSE service)
+            self.event_publisher.publish(event)  # Sync subscribers
             
-            # Also publish async for SSE service integration
+            # CRITICAL FIX: Schedule async publishing to reach SSE service
             import asyncio
             try:
+                # Get the current event loop and schedule async publishing
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
-                    # Create task if loop is already running
+                    # Schedule the async publishing as a task
                     asyncio.create_task(self.event_publisher.publish_async(event))
                 else:
-                    # Run if no loop is running
+                    # Run in new event loop if none running
                     asyncio.run(self.event_publisher.publish_async(event))
             except RuntimeError:
-                # Fallback to sync only if async fails
-                pass
+                # No event loop - create one and run async publishing
+                asyncio.run(self.event_publisher.publish_async(event))
             
             # Track performance
             if self.config.performance_monitoring:

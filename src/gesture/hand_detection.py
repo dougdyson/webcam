@@ -28,10 +28,10 @@ class HandDetector:
         Raises:
             ValueError: If configuration values are invalid
         """
-        # Configuration with defaults
+        # Configuration with AGGRESSIVE defaults for better detection
         self.max_num_hands = config.get('max_num_hands', 2)
-        self.min_detection_confidence = config.get('min_detection_confidence', 0.7)
-        self.min_tracking_confidence = config.get('min_tracking_confidence', 0.5)
+        self.min_detection_confidence = config.get('min_detection_confidence', 0.3)  # LOWERED from 0.7
+        self.min_tracking_confidence = config.get('min_tracking_confidence', 0.3)   # LOWERED from 0.5
         self.model_complexity = config.get('model_complexity', 1)
         
         # Validate configuration
