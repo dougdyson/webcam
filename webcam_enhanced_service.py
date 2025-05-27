@@ -90,15 +90,15 @@ class EnhancedWebcamService:
             self.gesture_detector = GestureDetector()
             self.gesture_detector.initialize()
             
-            # Initialize enhanced frame processor with DEBUG SCRIPT SPEED SETTINGS
+            # Initialize enhanced frame processor with BALANCED SETTINGS (prevent false positives but still work)
             processor_config = EnhancedProcessorConfig(
-                min_human_confidence_for_gesture=0.3,  # SAME as debug script
-                min_gesture_confidence_threshold=0.2,  # Very low for easy detection
+                min_human_confidence_for_gesture=0.4,  # Lower - your 0.54 confidence should work
+                min_gesture_confidence_threshold=0.8,  # HIGH but not extreme - 80% confidence required
                 enable_gesture_detection=True,
                 publish_gesture_events=True,
                 performance_monitoring=True,
-                gesture_detection_every_n_frames=1,    # EVERY FRAME like debug script
-                max_gesture_fps=30.0                   # HIGH RATE like debug script
+                gesture_detection_every_n_frames=2,    # Every 2nd frame - balance between speed and accuracy
+                max_gesture_fps=10.0                   # Moderate rate
             )
             
             self.frame_processor = EnhancedFrameProcessor(
@@ -156,44 +156,87 @@ class EnhancedWebcamService:
             self.sse_service = None
     
     def detection_loop(self):
-        """Main detection loop running in separate thread with performance optimizations."""        
+        """Main detection loop - SIMPLIFIED like debug script."""        
         last_status_print = 0
         detection_count = 0
-        fps_target = 15  # Reduced from ~30 FPS for better performance
-        frame_time = 1.0 / fps_target  # ~0.067 seconds per frame
+        fps_target = 15
+        frame_time = 1.0 / fps_target
         
         while self.is_running and not self._shutdown_requested:
             try:
                 # Get frame from camera
                 frame = self.camera.get_frame()
                 if frame is not None:
-                    detection_result = self.frame_processor.process_frame(frame)
+                    # SIMPLIFIED: Direct detection like debug script
+                    human_result = self.detector.detect(frame)
                     detection_count += 1
                     
-                    # Get gesture status from the previous result
+                    # Simple gesture detection like debug script
                     gesture_status = "None"
-                    if hasattr(self.frame_processor, 'previous_gesture_result') and self.frame_processor.previous_gesture_result:
-                        prev_gesture = self.frame_processor.previous_gesture_result
-                        if prev_gesture.gesture_detected:
-                            gesture_status = f"{prev_gesture.gesture_type} ({prev_gesture.confidence:.2f})"
+                    gesture_confidence = 0.0
                     
-                    # Update HTTP service status
+                    # EXACTLY like debug script: simple threshold check
+                    if human_result.human_present and human_result.confidence > 0.6:
+                        try:
+                            # Direct gesture detection like debug script
+                            gesture_result = self.gesture_detector.detect_gestures(
+                                frame, 
+                                pose_landmarks=getattr(human_result, '_original_pose_landmarks', None)
+                            )
+                            
+                            if gesture_result and gesture_result.gesture_detected:
+                                gesture_status = f"{gesture_result.gesture_type}"
+                                gesture_confidence = gesture_result.confidence
+                                
+                                # Simple event publishing - BOTH sync and async for SSE
+                                if self.sse_service:
+                                    try:
+                                        from src.service.events import ServiceEvent, EventType
+                                        event = ServiceEvent(
+                                            event_type=EventType.GESTURE_DETECTED,
+                                            data={
+                                                "gesture_type": gesture_result.gesture_type,
+                                                "confidence": gesture_result.confidence,
+                                                "hand": gesture_result.hand
+                                            },
+                                            timestamp=datetime.now()
+                                        )
+                                        # Publish both sync AND async for SSE service
+                                        self.event_publisher.publish(event)
+                                        
+                                        # CRITICAL: Also publish async for SSE service
+                                        import asyncio
+                                        try:
+                                            loop = asyncio.get_event_loop()
+                                            if loop.is_running():
+                                                asyncio.create_task(self.event_publisher.publish_async(event))
+                                        except RuntimeError:
+                                            # No event loop running - create one
+                                            asyncio.run(self.event_publisher.publish_async(event))
+                                        
+                                    except Exception as e:
+                                        print(f"Event publishing error: {e}")  # DON'T HIDE ERRORS
+                        except Exception as e:
+                            pass  # Don't let gesture detection break human detection
+                    
+                    # Update HTTP service status (simple)
                     if self.http_service:
-                        self.http_service.current_status.human_present = detection_result.human_present
-                        self.http_service.current_status.confidence = detection_result.confidence
+                        self.http_service.current_status.human_present = human_result.human_present
+                        self.http_service.current_status.confidence = human_result.confidence
                         self.http_service.current_status.last_detection = datetime.now()
                         self.http_service.current_status.detection_count += 1
                     
                     # Print status update every 2 seconds (single updating line)
                     current_time = time.time()
                     if current_time - last_status_print >= 2.0:
-                        status = "👤 HUMAN" if detection_result.human_present else "❌ NO HUMAN"
-                        print(f"\r{status} | Conf: {detection_result.confidence:.2f} | Gesture: {gesture_status} | Frames: {detection_count} | FPS: {fps_target}", end='', flush=True)
+                        status = "👤 HUMAN" if human_result.human_present else "❌ NO HUMAN"
+                        gesture_display = f"{gesture_status} ({gesture_confidence:.2f})" if gesture_confidence > 0 else gesture_status
+                        print(f"\r{status} | Conf: {human_result.confidence:.2f} | Gesture: {gesture_display} | Frames: {detection_count} | FPS: {fps_target}", end='', flush=True)
                         last_status_print = current_time
                     
-                    time.sleep(frame_time)  # Target 15 FPS instead of 30
+                    time.sleep(frame_time)
                 else:
-                    time.sleep(0.1)  # Wait if no frame
+                    time.sleep(0.1)
                     
             except Exception as e:
                 logger.error(f"Detection loop error: {e}")
