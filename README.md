@@ -29,7 +29,7 @@ Webcam Detection provides a comprehensive, local-processing human presence detec
 **Fully Implemented** - Following our proven TDD methodology with 414 comprehensive tests:
 
 ### 🖐️ Gesture Recognition System ✅ IMPLEMENTED
-- **Hand Up Detection**: Recognize "hand up at shoulder level with palm facing camera"
+- **Hand Up Detection**: Recognize "palm facing camera"
 - **Performance Optimized**: Gesture detection only runs when human is present
 - **MediaPipe Integration**: Leverages existing pose detection for shoulder reference
 - **Smart Debouncing**: Prevents false positive gesture triggers
