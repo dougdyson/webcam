@@ -315,24 +315,6 @@ webcam-detection>=2.0.0
 webcam-detection[service]>=2.0.0
 ```
 
-### Docker
-```dockerfile
-FROM python:3.11-slim
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install package
-RUN pip install webcam-detection[service]
-
-# Your application code
-COPY . /app
-WORKDIR /app
-```
-
 ## 📖 Documentation
 
 - [Architecture Guide](docs/ARCHITECTURE.md) - System design and components
