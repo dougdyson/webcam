@@ -8,9 +8,10 @@
 
 Webcam Detection provides a comprehensive, local-processing human presence detection system using computer vision. Perfect for guard clauses in speaker verification, smart home automation, security systems, and any application requiring reliable human presence detection.
 
-**🎯 Clean Project Structure**: All examples and client code are organized in the `examples/` directory. See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for navigation guide.
+**🎯 Clean Project Structure**: Root directory cleaned up! All examples, client code, and debug tools are organized in the `examples/` directory. See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for navigation guide.
 
 > 📁 **New to the project?** See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for a quick navigation guide.
+> 🧹 **Recent cleanup**: Test files moved to `tests/`, debug tools to `examples/`, legacy code organized.
 
 ## 🚀 Key Features
 
@@ -204,7 +205,12 @@ Real-time gesture event streaming:
     "gesture_type": "hand_up",
     "confidence": 0.95,
     "hand": "right",
-    "duration_ms": 1250
+    "position": {
+      "hand_x": 0.65,
+      "hand_y": 0.25,
+      "palm_z_component": 0.85
+    },
+    "palm_facing_camera": true
   }
 }
 ```
@@ -333,6 +339,27 @@ WORKDIR /app
 - [Package Usage](docs/PACKAGE_USAGE.md) - Detailed integration patterns
 - [Service Patterns](docs/service_patterns.py) - Service layer examples
 - [Configuration Samples](docs/configuration_samples.py) - Setup examples
+
+## 🧹 Recent Project Cleanup ✅ NEW!
+
+**Root Directory Organized** - The project structure has been cleaned up for better navigation:
+
+### ✅ Files Moved to Proper Locations:
+- **Test files** → `tests/` directory (properly organized by category)
+- **Debug tools** → `examples/` directory (with other development tools)
+- **Legacy code** → `examples/legacy_http_service.py` (reference implementation)
+
+### 📁 Clean Root Directory:
+- **Main service**: `webcam_enhanced_service.py` (primary entry point)
+- **Documentation**: `README.md`, `ARCHITECTURE.md`, `PROJECT_STRUCTURE.md`
+- **Configuration**: `setup.py`, `requirements.txt`, `environment.yml`
+- **Organized directories**: `src/`, `tests/`, `docs/`, `examples/`, `config/`
+
+### 🎯 Benefits:
+- **Cleaner navigation** - Easy to find what you need
+- **Professional structure** - Industry-standard organization
+- **Better documentation** - Updated guides reflect current structure
+- **Preserved functionality** - All files moved, not deleted
 
 ## 🔄 Changelog
 

@@ -409,36 +409,14 @@ class SmartHomeController:
         if event.confidence < 0.8:  # Only high-confidence gestures
             return
             
-        if event.gesture_type == "thumbs_up":
-            self._turn_on_lights()
-        elif event.gesture_type == "thumbs_down":
-            self._turn_off_lights()
-        elif event.gesture_type == "peace":
-            self._toggle_music()
-        elif event.gesture_type == "stop":
+        if event.gesture_type == "hand_up":
+            # Hand up gesture - emergency stop/pause all systems
             self._emergency_stop()
-    
-    def _turn_on_lights(self):
-        """Turn on smart lights."""
-        if not self.lights_on:
-            print("💡 Turning on lights (thumbs up detected)")
-            self.lights_on = True
-    
-    def _turn_off_lights(self):
-        """Turn off smart lights."""
-        if self.lights_on:
-            print("🌙 Turning off lights (thumbs down detected)")
-            self.lights_on = False
-    
-    def _toggle_music(self):
-        """Toggle music playback."""
-        self.music_playing = not self.music_playing
-        status = "🎵 Playing" if self.music_playing else "⏸️ Paused"
-        print(f"{status} music (peace gesture detected)")
     
     def _emergency_stop(self):
         """Emergency stop all systems."""
-        print("🛑 Emergency stop (stop gesture detected)")
+        print("🛑 Emergency stop (hand up gesture detected)")
+        print("   Turning off all lights and stopping music")
         self.lights_on = False
         self.music_playing = False
     
@@ -446,10 +424,8 @@ class SmartHomeController:
         """Start smart home automation."""
         print("🏠 Starting smart home automation...")
         print("Gesture controls:")
-        print("  👍 Thumbs up = Turn on lights")
-        print("  👎 Thumbs down = Turn off lights") 
-        print("  ✌️ Peace = Toggle music")
-        print("  ✋ Stop = Emergency stop")
+        print("  ✋ Hand up (palm facing camera) = Emergency stop all systems")
+        print("  Note: Lights and music controlled by other means, gesture for emergency stop only")
         print()
         
         # Start monitoring

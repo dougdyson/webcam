@@ -58,9 +58,15 @@ Quick-start examples for getting up and running with webcam-detection package.
 
 ### 🔧 **Testing & Debugging**
 - **`debug_gesture_real.py`** - Real-time gesture debugging tools
+- **`debug_gesture_live.py`** - Live gesture detection debug tool (moved from root)
+- **`debug_gesture_simple.py`** - Simple gesture detection test (moved from root)
 - **`gesture_diagnostic.py`** - Gesture system diagnostics
 - **`live_gesture_video_test.py`** - Live video testing with gesture overlay
 - **`live_status_viewer.py`** - Real-time status monitoring
+- **`gesture_performance_test.py`** - Performance testing tools
+
+### 🗂️ **Legacy & Reference**
+- **`legacy_http_service.py`** - Original HTTP-only service (superseded by enhanced service)
 
 ### 📚 **Comprehensive Patterns**
 - **`package_usage_examples.py`** - Production-ready integration patterns
@@ -109,11 +115,20 @@ python examples/voice_bot_quick_integration.py
 # Real-time gesture debugging
 python examples/debug_gesture_real.py
 
+# Live gesture detection debug (moved from root)
+python examples/debug_gesture_live.py
+
+# Simple gesture test (moved from root)
+python examples/debug_gesture_simple.py
+
 # Live video testing
 python examples/live_gesture_video_test.py
 
 # System diagnostics
 python examples/gesture_diagnostic.py
+
+# Performance testing
+python examples/gesture_performance_test.py
 ```
 
 ### All Production Patterns

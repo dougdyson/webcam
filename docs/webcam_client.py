@@ -293,20 +293,15 @@ def example_gesture_streaming():
         if confidence > 0.7:  # Only show high-confidence gestures
             print(f"🤚 {gesture_type.upper()} ({confidence:.2f}) - {hand} hand")
             
-            # React to specific gestures
-            if gesture_type == "thumbs_up":
-                print("   👍 Positive feedback!")
-            elif gesture_type == "thumbs_down":
-                print("   👎 Negative feedback!")
-            elif gesture_type == "peace":
-                print("   ✌️ Peace out!")
-            elif gesture_type == "stop":
-                print("   ✋ Stop detected!")
+            # React to hand up gesture
+            if gesture_type == "hand_up":
+                print("   ✋ Hand up detected - universal stop/pause signal!")
+                print("   🛑 This could trigger: pause voice bot, stop music, emergency stop")
     
     # Start streaming
     if client.start_gesture_streaming(handle_gesture):
-        print("🎯 Gesture streaming started. Make some gestures!")
-        print("   Supported: thumbs_up, thumbs_down, peace, stop, pointing, fist")
+        print("🎯 Gesture streaming started. Raise your hand with palm facing camera!")
+        print("   Supported: hand_up (open palm facing camera)")
         
         try:
             # Monitor for 30 seconds

@@ -6,13 +6,16 @@ Quick reference for navigating the webcam-detection project.
 
 ```
 webcam/
-├── 🏠 ROOT FILES (Clean & Organized)
+├── 🏠 ROOT FILES (Clean & Organized) ✅ CLEANED UP!
 │   ├── webcam_enhanced_service.py     # 🚀 MAIN SERVICE (production ready + gesture recognition)
-│   ├── webcam_http_service.py         # HTTP-only service (alternative)
 │   ├── README.md                      # Project overview and quick start
+│   ├── ARCHITECTURE.md                # System architecture (comprehensive)
+│   ├── PROJECT_STRUCTURE.md           # This navigation guide
+│   ├── TDD_PLAN.md                   # Development methodology
 │   ├── requirements.txt               # Python dependencies
 │   ├── setup.py                       # Package configuration
-│   └── environment.yml                # Conda environment
+│   ├── environment.yml                # Conda environment
+│   └── .gitignore                     # Git ignore patterns
 ├── 
 ├── 📦 SOURCE CODE
 │   ├── src/                           # Main application code
@@ -25,13 +28,17 @@ webcam/
 │   │   └── utils/                    # Utilities and configuration
 │   │
 ├── 🧪 TESTING
-│   ├── tests/                         # 414 comprehensive tests
+│   ├── tests/                         # 414 comprehensive tests ✅ ORGANIZED!
 │   │   ├── test_camera/              # Camera system tests
 │   │   ├── test_detection/           # Detection algorithm tests
 │   │   ├── test_processing/          # Processing pipeline tests
 │   │   ├── test_gesture/             # 🖐️ Gesture recognition tests
 │   │   ├── test_service/             # Service layer tests (HTTP + SSE)
+│   │   │   ├── test_enhanced_speed.py    # ✅ Moved from root
+│   │   │   └── [other service tests]
 │   │   └── test_integration/         # Integration tests (including gesture+SSE)
+│   │       ├── test_gesture_functionality.py  # ✅ Moved from root
+│   │       └── [other integration tests]
 │   │
 ├── 📚 DOCUMENTATION
 │   ├── docs/                          # 📖 COMPREHENSIVE DOCUMENTATION
@@ -52,11 +59,16 @@ webcam/
 │   │   │   └── voice_library_examples.py    # Voice library patterns
 │   │   ├── 🔧 Testing & Debugging:
 │   │   │   ├── debug_gesture_real.py        # Real-time debugging
+│   │   │   ├── debug_gesture_live.py        # ✅ Live gesture debug (moved from root)
+│   │   │   ├── debug_gesture_simple.py      # ✅ Simple gesture test (moved from root)
 │   │   │   ├── gesture_diagnostic.py        # System diagnostics
 │   │   │   ├── live_gesture_video_test.py   # Live video testing
-│   │   │   └── live_status_viewer.py        # Status monitoring
-│   │   └── 📚 Production Patterns:
-│   │       └── package_usage_examples.py    # Comprehensive integration
+│   │   │   ├── live_status_viewer.py        # Status monitoring
+│   │   │   └── gesture_performance_test.py  # Performance testing tools
+│   │   ├── 📚 Production Patterns:
+│   │   │   └── package_usage_examples.py    # Comprehensive integration
+│   │   └── 🗂️ Legacy & Reference:
+│   │       └── legacy_http_service.py       # ✅ Original HTTP service (moved from root)
 │   │
 ├── ⚙️ CONFIGURATION
 │   ├── config/                        # Configuration files
@@ -64,16 +76,13 @@ webcam/
 │   │   ├── detection_config.yaml     # Detection parameters
 │   │   └── app_config.yaml           # Application settings
 │   │
-├── 📋 PROJECT DOCS
-│   ├── ARCHITECTURE.md                # System architecture (comprehensive)
-│   ├── TDD_PLAN.md                   # Development methodology
-│   └── PROJECT_STRUCTURE.md          # This file
+├── 📋 BUILD & DISTRIBUTION
+│   ├── dist/                          # Built packages (.whl, .tar.gz)
+│   ├── .benchmarks/                   # Performance benchmarks
+│   └── .pytest_cache/                 # Test cache files
 │
 └── 💾 DATA & OUTPUT
-    ├── data/                          # Logs, temporary files, models
-    │   └── webcam.log                # Moved here from root
-    ├── dist/                          # Built packages
-    └── .benchmarks/                   # Performance benchmarks
+    └── data/                          # Logs, temporary files, models
 ```
 
 ## 🎯 Quick Navigation
@@ -94,12 +103,13 @@ webcam/
 ## 🔥 Most Important Files
 
 1. **`webcam_enhanced_service.py`** - Production service with gesture recognition (START HERE)
-2. **`webcam_http_service.py`** - HTTP-only service (alternative)
-3. **`README.md`** - Project overview
-4. **`docs/PACKAGE_USAGE.md`** - Complete documentation
-5. **`examples/package_usage_examples.py`** - Quick start
+2. **`README.md`** - Project overview and quick start
+3. **`docs/PACKAGE_USAGE.md`** - Complete documentation
+4. **`docs/CLIENT_INTEGRATION.md`** - Client integration guide
+5. **`examples/package_usage_examples.py`** - Quick start examples
 6. **`src/`** - Source code
 7. **`tests/`** - Test suite (414 tests)
+8. **`examples/legacy_http_service.py`** - HTTP-only service (moved from root)
 
 ## 🚀 Getting Started
 
@@ -135,10 +145,11 @@ curl http://localhost:8766/events/gestures/test_client
 🎥 Frame 1250 | 👤 Human: YES (conf: 0.72) | 🖐️ Gesture: hand_up (conf: 0.95) | FPS: 28.5
 ```
 
-### HTTP-Only Service (webcam_http_service.py) - Alternative
+### Legacy HTTP Service (examples/legacy_http_service.py) - Reference
 - ✅ **HTTP API** (port 8767): Human presence detection only
 - ✅ **Lightweight**: No gesture recognition overhead
 - ✅ **Simple**: Basic presence detection service
+- 📁 **Moved**: Now in examples/ as reference implementation
 
 ---
 

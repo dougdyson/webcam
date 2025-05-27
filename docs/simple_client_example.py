@@ -230,16 +230,15 @@ def example_gesture_integration():
         gesture_type = gesture_event.get("gesture_type", "unknown")
         confidence = gesture_event.get("confidence", 0.0)
         hand = gesture_event.get("hand", "unknown")
+        palm_facing = gesture_event.get("palm_facing_camera", False)
         
         print(f"🤚 Gesture: {gesture_type} ({confidence:.2f}) with {hand} hand")
+        print(f"   Palm facing camera: {palm_facing}")
         
-        # Handle specific gestures
-        if gesture_type == "thumbs_up" and confidence > 0.8:
-            print("  👍 High-confidence thumbs up detected!")
-        elif gesture_type == "peace" and confidence > 0.8:
-            print("  ✌️ Peace gesture detected!")
-        elif gesture_type == "stop" and confidence > 0.8:
-            print("  ✋ Stop gesture detected!")
+        # Handle hand up gesture
+        if gesture_type == "hand_up" and confidence > 0.8:
+            print("  ✋ High-confidence hand up detected!")
+            print("  🛑 This could trigger: pause voice bot, stop music, emergency stop, etc.")
     
     # Register gesture handler
     client.add_gesture_callback(on_gesture)
@@ -284,19 +283,13 @@ def example_smart_app():
         if confidence < 0.8:  # Only high-confidence gestures
             return
         
-        if gesture_type == "thumbs_up":
-            if not app_active:
-                app_active = True
-                print("🚀 App activated by thumbs up!")
-        elif gesture_type == "thumbs_down":
+        if gesture_type == "hand_up":
+            # Hand up gesture - universal stop/pause signal
             if app_active:
                 app_active = False
-                print("💤 App deactivated by thumbs down!")
-        elif gesture_type == "peace" and app_active:
-            print("✌️ Peace gesture - performing action!")
-        elif gesture_type == "stop":
-            print("🛑 Stop gesture - emergency stop!")
-            app_active = False
+                print("🛑 Hand up detected - app paused!")
+            else:
+                print("✋ Hand up detected (app already inactive)")
     
     # Setup gesture handling
     client.add_gesture_callback(on_gesture)
@@ -304,10 +297,8 @@ def example_smart_app():
     
     print("Smart app running...")
     print("Gestures:")
-    print("  👍 Thumbs up = Activate app")
-    print("  👎 Thumbs down = Deactivate app")
-    print("  ✌️ Peace = Perform action (when active)")
-    print("  ✋ Stop = Emergency stop")
+    print("  ✋ Hand up (palm facing camera) = Pause/stop app")
+    print("  Note: App auto-activates when human present, hand up pauses it")
     print()
     
     try:
@@ -316,10 +307,13 @@ def example_smart_app():
             human_present = client.is_human_present()
             
             # App logic
+            if human_present and not app_active:
+                app_active = True  # Auto-activate when human appears
+                
             if human_present and app_active:
-                print(f"\r🟢 App ACTIVE - Human present", end='', flush=True)
+                print(f"\r🟢 App ACTIVE - Human present (raise hand to pause)", end='', flush=True)
             elif human_present and not app_active:
-                print(f"\r🟡 App IDLE - Human present (use thumbs up to activate)", end='', flush=True)
+                print(f"\r🟡 App PAUSED - Human present (paused by hand gesture)", end='', flush=True)
             else:
                 print(f"\r🔴 App WAITING - No human detected", end='', flush=True)
                 app_active = False  # Auto-deactivate when no human

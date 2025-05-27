@@ -95,20 +95,38 @@ Real-time gesture events via Server-Sent Events.
 ```
 event: gesture
 data: {
-    "gesture_type": "thumbs_up",
+    "gesture_type": "hand_up",
     "confidence": 0.92,
     "hand": "right",
-    "timestamp": "2024-01-15T10:30:45.123456"
+    "timestamp": "2024-01-15T10:30:45.123456",
+    "position": {
+        "hand_x": 0.65,
+        "hand_y": 0.25,
+        "palm_z_component": 0.85
+    },
+    "palm_facing_camera": true
 }
 ```
 
 **Supported Gestures:**
-- `thumbs_up` - Thumbs up gesture
-- `thumbs_down` - Thumbs down gesture  
-- `peace` - Peace/victory sign
-- `stop` - Open palm stop gesture
-- `pointing` - Index finger pointing
-- `fist` - Closed fist
+- `hand_up` - Hand raised with palm facing camera (primary gesture for voice control)
+
+### Gesture Detection Details
+
+The current implementation focuses on a single, highly reliable gesture:
+
+**Hand Up Gesture:**
+- **Detection**: Open palm raised with palm facing the camera
+- **Use Case**: Universal stop/pause signal for voice assistants, presentations, automation
+- **Confidence**: Typically 0.7-0.95 for clear gestures
+- **Position Data**: Includes hand center coordinates and palm orientation
+- **Performance**: Optimized for real-time detection with minimal false positives
+
+**Technical Details:**
+- Uses MediaPipe hands detection for landmark analysis
+- Calculates palm normal vector to ensure palm faces camera
+- Provides position data for advanced applications
+- Only runs when human presence is detected (performance optimized)
 
 ## Client Examples
 
@@ -213,14 +231,12 @@ def handle_gesture(event):
     if confidence < 0.8:  # Only high-confidence gestures
         return
     
-    if gesture == "thumbs_up":
-        turn_on_lights()
-    elif gesture == "thumbs_down":
-        turn_off_lights()
-    elif gesture == "peace":
-        toggle_music()
-    elif gesture == "stop":
+    if gesture == "hand_up":
+        # Hand up gesture - universal stop/pause signal
         emergency_stop()
+        # Or pause voice processing, stop music, etc.
+        pause_voice_bot()
+        print("Hand up detected - pausing system")
 
 client.add_gesture_callback(handle_gesture)
 client.start_gesture_streaming()
@@ -278,10 +294,10 @@ React to gesture events in real-time:
 ```python
 def setup_gesture_controls():
     def on_gesture(event):
-        if event["gesture_type"] == "thumbs_up":
-            app.activate()
-        elif event["gesture_type"] == "stop":
+        if event["gesture_type"] == "hand_up":
+            # Hand up gesture - pause/stop signal
             app.pause()
+            print("Hand up detected - pausing application")
     
     client.add_gesture_callback(on_gesture)
     client.start_gesture_streaming()
