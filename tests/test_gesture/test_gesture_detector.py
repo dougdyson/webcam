@@ -70,7 +70,7 @@ class TestGestureDetector:
         Should process frame and return GestureResult with gesture information.
         """
         from src.detection.gesture_detector import GestureDetector
-        from src.gesture.result import GestureResult
+        from src.gesture.classification import GestureResult
         
         detector = GestureDetector()
         detector.initialize()

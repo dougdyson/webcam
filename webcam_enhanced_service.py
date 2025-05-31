@@ -86,27 +86,27 @@ class EnhancedWebcamService:
             self.detector = create_detector('multimodal')
             self.detector.initialize()
             
-            # Initialize gesture detector (quiet)
+            # TESTING: Re-enable gesture detector to test shoulder fix
             self.gesture_detector = GestureDetector()
             self.gesture_detector.initialize()
             
-            # Initialize enhanced frame processor with BALANCED SETTINGS (prevent false positives but still work)
-            processor_config = EnhancedProcessorConfig(
-                min_human_confidence_for_gesture=0.4,  # Lower - your 0.54 confidence should work
-                min_gesture_confidence_threshold=0.8,  # HIGH but not extreme - 80% confidence required
-                enable_gesture_detection=True,
-                publish_gesture_events=True,
-                performance_monitoring=True,
-                gesture_detection_every_n_frames=2,    # Every 2nd frame - balance between speed and accuracy
-                max_gesture_fps=10.0                   # Moderate rate
-            )
+            # DISABLED: Initialize enhanced frame processor with BALANCED SETTINGS (prevent false positives but still work)
+            # processor_config = EnhancedProcessorConfig(
+            #     min_human_confidence_for_gesture=0.4,  # Lower - your 0.54 confidence should work
+            #     min_gesture_confidence_threshold=0.8,  # HIGH but not extreme - 80% confidence required
+            #     enable_gesture_detection=True,
+            #     publish_gesture_events=True,
+            #     performance_monitoring=True,
+            #     gesture_detection_every_n_frames=2,    # Every 2nd frame - balance between speed and accuracy
+            #     max_gesture_fps=10.0                   # Moderate rate
+            # )
             
-            self.frame_processor = EnhancedFrameProcessor(
-                detector=self.detector,
-                gesture_detector=self.gesture_detector,
-                event_publisher=self.event_publisher,
-                config=processor_config
-            )
+            # self.frame_processor = EnhancedFrameProcessor(
+            #     detector=self.detector,
+            #     gesture_detector=self.gesture_detector,
+            #     event_publisher=self.event_publisher,
+            #     config=processor_config
+            # )
             
             # Initialize HTTP service (presence detection)
             http_config = HTTPServiceConfig(
@@ -118,7 +118,7 @@ class EnhancedWebcamService:
             self.http_service = HTTPDetectionService(http_config)
             self.http_service.setup_event_integration(self.event_publisher)
             
-            # Initialize SSE service (gesture streaming)
+            # ENABLED: Initialize SSE service (gesture streaming)
             sse_config = SSEServiceConfig(
                 host="localhost",
                 port=8766,
@@ -171,14 +171,14 @@ class EnhancedWebcamService:
                     human_result = self.detector.detect(frame)
                     detection_count += 1
                     
-                    # Simple gesture detection like debug script
+                    # TESTING: Re-enable gesture detection to test shoulder fix
                     gesture_status = "None"
                     gesture_confidence = 0.0
                     
-                    # EXACTLY like debug script: simple threshold check
+                    # TESTING: Simple threshold check with shoulder validation
                     if human_result.human_present and human_result.confidence > 0.6:
                         try:
-                            # Direct gesture detection like debug script
+                            # Direct gesture detection with pose landmarks for shoulder reference
                             gesture_result = self.gesture_detector.detect_gestures(
                                 frame, 
                                 pose_landmarks=getattr(human_result, '_original_pose_landmarks', None)
@@ -188,7 +188,7 @@ class EnhancedWebcamService:
                                 gesture_status = f"{gesture_result.gesture_type}"
                                 gesture_confidence = gesture_result.confidence
                                 
-                                # Simple event publishing - BOTH sync and async for SSE
+                                # ENABLED: Simple event publishing - BOTH sync and async for SSE
                                 if self.sse_service:
                                     try:
                                         from src.service.events import ServiceEvent, EventType
@@ -230,6 +230,7 @@ class EnhancedWebcamService:
                     current_time = time.time()
                     if current_time - last_status_print >= 2.0:
                         status = "👤 HUMAN" if human_result.human_present else "❌ NO HUMAN"
+                        # TESTING: Re-enable gesture display to test shoulder fix
                         gesture_display = f"{gesture_status} ({gesture_confidence:.2f})" if gesture_confidence > 0 else gesture_status
                         print(f"\r{status} | Conf: {human_result.confidence:.2f} | Gesture: {gesture_display} | Frames: {detection_count} | FPS: {fps_target}", end='', flush=True)
                         last_status_print = current_time
@@ -291,6 +292,7 @@ class EnhancedWebcamService:
             detection_thread.start()
             
             # Start both services concurrently
+            # ENABLED: SSE service for gesture events
             await asyncio.gather(
                 self.start_http_service(),
                 self.start_sse_service()

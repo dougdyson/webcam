@@ -8,6 +8,18 @@ import numpy as np
 from typing import List, Any, Dict, Optional
 
 
+class GestureResult:
+    """Result of gesture detection with type and confidence."""
+    
+    def __init__(self, gesture_type: str, confidence: float, position: Optional[Dict] = None):
+        self.gesture_type = gesture_type
+        self.confidence = confidence
+        self.position = position or {}
+        self.gesture_detected = gesture_type != "none"
+        
+        # Legacy compatibility
+        self.palm_facing_camera = gesture_type in ["stop", "peace"]
+
 class GestureClassifier:
     """
     Classifies hand gestures, specifically "hand up" gestures.
@@ -128,7 +140,7 @@ class GestureClassifier:
         Detect hand up gesture using pose landmarks for shoulder reference.
         
         This integrates with existing pose detection to automatically calculate
-        shoulder reference point.
+        shoulder reference point and validates proper stop gesture arm geometry.
         
         Args:
             hand_landmarks: List of hand landmark objects
@@ -144,6 +156,19 @@ class GestureClassifier:
         # If no pose data available, cannot detect gesture
         if shoulder_reference_y is None:
             return False
+        
+        # NEW: Validate that hand is in open palm configuration (not peace sign, etc.)
+        is_open_palm = self._validate_open_palm_shape(hand_landmarks)
+        if not is_open_palm:
+            return False  # Reject peace signs, pointing, etc.
+        
+        # NEW: Validate proper stop gesture arm geometry
+        is_proper_arm_extension = self._validate_stop_gesture_arm_geometry(
+            hand_landmarks, pose_landmarks
+        )
+        
+        if not is_proper_arm_extension:
+            return False  # Reject hands behind head, awkward positions
         
         # Use existing gesture detection logic
         result = self.detect_hand_up_gesture(
@@ -329,4 +354,317 @@ class GestureClassifier:
             confidence = 0.8 + (palm_z_component - self.palm_facing_confidence) * 0.2 / (1.0 - self.palm_facing_confidence)
             return min(1.0, max(0.0, confidence))
         else:
-            return 0.0 
+            return 0.0
+    
+    def _validate_open_palm_shape(self, hand_landmarks: List[Any]) -> bool:
+        """
+        Validate that the hand is in an open palm configuration for a stop gesture.
+        
+        Checks that multiple fingers are extended, not just 2 fingers (peace sign)
+        or 1 finger (pointing). A proper stop gesture should show an open palm.
+        
+        Args:
+            hand_landmarks: List of hand landmark objects (MediaPipe format)
+            
+        Returns:
+            True if hand shows open palm shape, False otherwise
+        """
+        if not hand_landmarks or len(hand_landmarks) < 21:
+            return False
+        
+        try:
+            # MediaPipe hand landmark indices for fingertips and joints
+            # Thumb: 4 (tip), 3 (ip), 2 (mcp)
+            # Index: 8 (tip), 7 (dip), 6 (pip), 5 (mcp)
+            # Middle: 12 (tip), 11 (dip), 10 (pip), 9 (mcp)
+            # Ring: 16 (tip), 15 (dip), 14 (pip), 13 (mcp)
+            # Pinky: 20 (tip), 19 (dip), 18 (pip), 17 (mcp)
+            
+            extended_fingers = 0
+            
+            # Check thumb extension (special case - compare distances from wrist)
+            thumb_tip = hand_landmarks[4]
+            thumb_ip = hand_landmarks[3]
+            wrist = hand_landmarks[0]
+            
+            thumb_distance_tip = ((thumb_tip.x - wrist.x) ** 2 + (thumb_tip.y - wrist.y) ** 2) ** 0.5
+            thumb_distance_ip = ((thumb_ip.x - wrist.x) ** 2 + (thumb_ip.y - wrist.y) ** 2) ** 0.5
+            
+            if thumb_distance_tip > thumb_distance_ip * 1.1:  # 10% tolerance
+                extended_fingers += 1
+            
+            # Check other fingers (compare Y coordinates - tip should be higher than PIP joint)
+            finger_data = [
+                (8, 6),   # Index: tip vs PIP
+                (12, 10), # Middle: tip vs PIP  
+                (16, 14), # Ring: tip vs PIP
+                (20, 18)  # Pinky: tip vs PIP
+            ]
+            
+            for tip_idx, pip_idx in finger_data:
+                tip = hand_landmarks[tip_idx]
+                pip = hand_landmarks[pip_idx]
+                
+                # Finger is extended if tip is higher (lower Y value) than PIP joint
+                if tip.y < pip.y - 0.02:  # Small threshold for noise tolerance
+                    extended_fingers += 1
+            
+            # For a stop gesture, we need at least 3-4 fingers extended
+            # This rejects peace signs (2 fingers), pointing (1 finger), fists (0 fingers)
+            return extended_fingers >= 3
+            
+        except (IndexError, AttributeError, TypeError):
+            # If any landmark access fails, reject the gesture
+            return False
+    
+    def _validate_stop_gesture_arm_geometry(self, hand_landmarks: List[Any], pose_landmarks) -> bool:
+        """
+        Validate that the arm geometry represents a proper "stop" gesture.
+        
+        Checks:
+        1. Hand is in front of body (not behind head)
+        2. Proper arm extension (not bent backward)
+        3. Hand position relative to shoulder suggests forward extension
+        
+        Args:
+            hand_landmarks: List of hand landmark objects
+            pose_landmarks: MediaPipe pose landmarks object
+            
+        Returns:
+            True if arm geometry indicates proper stop gesture, False otherwise
+        """
+        if not hand_landmarks or pose_landmarks is None:
+            return False
+        
+        try:
+            # Get key landmarks
+            wrist = hand_landmarks[0]  # WRIST landmark
+            hand_center = hand_landmarks[9]  # MIDDLE_FINGER_MCP
+            
+            # Get pose landmarks
+            landmarks_list = None
+            if hasattr(pose_landmarks, 'landmark'):
+                landmarks_list = pose_landmarks.landmark
+            elif isinstance(pose_landmarks, list):
+                landmarks_list = pose_landmarks
+            else:
+                return False
+            
+            if not landmarks_list or len(landmarks_list) < 16:
+                return False
+            
+            # MediaPipe pose landmark indices
+            LEFT_SHOULDER = 11
+            RIGHT_SHOULDER = 12
+            NOSE = 0
+            
+            # Get shoulder and nose positions
+            left_shoulder = landmarks_list[LEFT_SHOULDER]
+            right_shoulder = landmarks_list[RIGHT_SHOULDER]
+            nose = landmarks_list[NOSE]
+            
+            # Calculate body center (between shoulders)
+            body_center_x = (self._get_landmark_x(left_shoulder) + self._get_landmark_x(right_shoulder)) / 2
+            body_center_y = (self._get_landmark_y(left_shoulder) + self._get_landmark_y(right_shoulder)) / 2
+            
+            # Get hand and wrist positions
+            hand_x = hand_center.x
+            hand_y = hand_center.y
+            wrist_x = wrist.x
+            wrist_y = wrist.y
+            nose_x = self._get_landmark_x(nose)
+            nose_y = self._get_landmark_y(nose)
+            
+            # Check 1: Hand should not be too close to face/head
+            # If hand is very close to nose position, likely behind head
+            distance_to_nose = ((hand_x - nose_x) ** 2 + (hand_y - nose_y) ** 2) ** 0.5
+            if distance_to_nose < 0.25:  # Too close to face - increased back to 0.25
+                return False
+            
+            # Check 1b: Hand should not be significantly higher than head
+            # If hand is much higher than nose, likely behind head
+            if hand_y < nose_y - 0.08:  # Hand more than 8% above nose level
+                return False
+            
+            # Check 2: Removed "too far to the side" check - unnecessary for webcam FOV
+            
+            # Check 3: Arm extension direction - hand should be forward from shoulder
+            # Calculate which shoulder is closer to the hand
+            distance_to_left = ((hand_x - self._get_landmark_x(left_shoulder)) ** 2 + 
+                              (hand_y - self._get_landmark_y(left_shoulder)) ** 2) ** 0.5
+            distance_to_right = ((hand_x - self._get_landmark_x(right_shoulder)) ** 2 + 
+                               (hand_y - self._get_landmark_y(right_shoulder)) ** 2) ** 0.5
+            
+            # Use closer shoulder as reference
+            if distance_to_left < distance_to_right:
+                shoulder_x = self._get_landmark_x(left_shoulder)
+                shoulder_y = self._get_landmark_y(left_shoulder)
+            else:
+                shoulder_x = self._get_landmark_x(right_shoulder)
+                shoulder_y = self._get_landmark_y(right_shoulder)
+            
+            # Check 4: Wrist-to-hand vector should indicate proper extension
+            wrist_to_hand_x = hand_x - wrist_x
+            wrist_to_hand_y = hand_y - wrist_y
+            
+            # For a stop gesture, hand should be extended from wrist (positive distance)
+            wrist_to_hand_distance = (wrist_to_hand_x ** 2 + wrist_to_hand_y ** 2) ** 0.5
+            if wrist_to_hand_distance < 0.05:  # Hand too close to wrist (not extended)
+                return False
+            
+            # Check 5: Overall arm position - shoulder to hand vector
+            shoulder_to_hand_x = hand_x - shoulder_x
+            shoulder_to_hand_y = hand_y - shoulder_y
+            
+            # For stop gesture, hand should be reasonably extended from shoulder
+            shoulder_to_hand_distance = (shoulder_to_hand_x ** 2 + shoulder_to_hand_y ** 2) ** 0.5
+            if shoulder_to_hand_distance < 0.2:  # Too close to shoulder
+                return False
+            
+            # All checks passed - this looks like proper stop gesture arm geometry
+            return True
+            
+        except (IndexError, AttributeError, TypeError):
+            # If any landmark access fails, reject the gesture
+            return False
+    
+    def _get_landmark_x(self, landmark) -> float:
+        """Get X coordinate from landmark (handles different landmark types)."""
+        if hasattr(landmark, 'x'):
+            return float(landmark.x)
+        elif isinstance(landmark, tuple) and len(landmark) >= 2:
+            return float(landmark[0])
+        elif isinstance(landmark, dict) and 'x' in landmark:
+            return float(landmark['x'])
+        else:
+            return 0.0
+    
+    def _get_landmark_y(self, landmark) -> float:
+        """Get Y coordinate from landmark (handles different landmark types)."""
+        if hasattr(landmark, 'y'):
+            return float(landmark.y)
+        elif isinstance(landmark, tuple) and len(landmark) >= 2:
+            return float(landmark[1])
+        elif isinstance(landmark, dict) and 'y' in landmark:
+            return float(landmark['y'])
+        else:
+            return 0.0
+    
+    def detect_gesture_type(self, hand_landmarks: List[Any], 
+                           pose_landmarks, 
+                           palm_normal_vector: np.ndarray) -> GestureResult:
+        """
+        Comprehensive gesture detection that classifies multiple gesture types.
+        
+        Currently supports:
+        - "stop": Open palm stop gesture (3+ fingers, above shoulders, proper position)
+        - "peace": Peace sign (exactly 2 fingers extended)
+        - "none": No recognized gesture
+        
+        Args:
+            hand_landmarks: List of hand landmark objects
+            pose_landmarks: MediaPipe pose landmarks object  
+            palm_normal_vector: Palm normal direction vector
+            
+        Returns:
+            GestureResult with gesture type, confidence, and position info
+        """
+        if not hand_landmarks or pose_landmarks is None:
+            return GestureResult("none", 0.0)
+        
+        # Calculate shoulder reference from pose data
+        shoulder_reference_y = self.calculate_shoulder_reference(pose_landmarks)
+        if shoulder_reference_y is None:
+            return GestureResult("none", 0.0)
+        
+        # Get hand center position
+        hand_center_y = self._get_hand_center_y(hand_landmarks)
+        hand_center_x = hand_landmarks[9].x if len(hand_landmarks) > 9 else 0.5
+        
+        # Check basic position requirements (above shoulders, palm facing camera)
+        is_above_shoulder = hand_center_y < (shoulder_reference_y - self.shoulder_offset_threshold)
+        palm_z_component = palm_normal_vector[2] if isinstance(palm_normal_vector, np.ndarray) and palm_normal_vector.size == 3 else 0
+        is_palm_facing_camera = palm_z_component >= self.palm_facing_confidence
+        
+        # If basic requirements not met, no gesture
+        if not (is_above_shoulder and is_palm_facing_camera):
+            return GestureResult("none", 0.0)
+        
+        # Check arm geometry (not behind head, proper extension)
+        is_proper_arm_geometry = self._validate_stop_gesture_arm_geometry(hand_landmarks, pose_landmarks)
+        if not is_proper_arm_geometry:
+            return GestureResult("none", 0.0)
+        
+        # Count extended fingers to determine gesture type
+        extended_fingers = self._count_extended_fingers(hand_landmarks)
+        
+        position_info = {
+            "hand_x": hand_center_x,
+            "hand_y": hand_center_y,
+            "extended_fingers": extended_fingers
+        }
+        
+        # Classify gesture based on finger count
+        if extended_fingers >= 3:
+            # Stop gesture (open palm)
+            confidence = self.calculate_gesture_confidence(hand_landmarks, shoulder_reference_y, palm_normal_vector)
+            return GestureResult("stop", confidence, position_info)
+        
+        elif extended_fingers == 2:
+            # Peace sign
+            confidence = min(0.9, max(0.6, palm_z_component))  # High confidence for clear peace signs
+            return GestureResult("peace", confidence, position_info)
+        
+        else:
+            # Other gestures (pointing, fist, etc.) - not currently supported
+            return GestureResult("none", 0.0)
+
+    def _count_extended_fingers(self, hand_landmarks: List[Any]) -> int:
+        """
+        Count the number of extended fingers in the hand.
+        
+        Args:
+            hand_landmarks: List of hand landmark objects (MediaPipe format)
+            
+        Returns:
+            Number of extended fingers (0-5)
+        """
+        if not hand_landmarks or len(hand_landmarks) < 21:
+            return 0
+        
+        try:
+            extended_fingers = 0
+            
+            # Check thumb extension (special case - compare distances from wrist)
+            thumb_tip = hand_landmarks[4]
+            thumb_ip = hand_landmarks[3]
+            wrist = hand_landmarks[0]
+            
+            thumb_distance_tip = ((thumb_tip.x - wrist.x) ** 2 + (thumb_tip.y - wrist.y) ** 2) ** 0.5
+            thumb_distance_ip = ((thumb_ip.x - wrist.x) ** 2 + (thumb_ip.y - wrist.y) ** 2) ** 0.5
+            
+            # FIXED: More strict thumb detection
+            if thumb_distance_tip > thumb_distance_ip * 1.3:  # 30% tolerance instead of 10%
+                extended_fingers += 1
+            
+            # Check other fingers (compare Y coordinates - tip should be significantly higher than PIP joint)
+            finger_names = ["index", "middle", "ring", "pinky"]
+            finger_data = [
+                (8, 6),   # Index: tip vs PIP
+                (12, 10), # Middle: tip vs PIP  
+                (16, 14), # Ring: tip vs PIP
+                (20, 18)  # Pinky: tip vs PIP
+            ]
+            
+            for i, (tip_idx, pip_idx) in enumerate(finger_data):
+                tip = hand_landmarks[tip_idx]
+                pip = hand_landmarks[pip_idx]
+                
+                # FIXED: More strict finger detection - tip must be SIGNIFICANTLY higher
+                if tip.y < pip.y - 0.08:  # Increased from 0.02 to 0.08 (8% difference required)
+                    extended_fingers += 1
+            
+            return extended_fingers
+            
+        except (IndexError, AttributeError, TypeError):
+            return 0 

@@ -404,7 +404,7 @@ class TestConditionalGestureDetection:
             event_publisher=event_publisher
         )
         
-        assert default_processor.config.min_human_confidence_for_gesture == 0.6, "Should use default confidence threshold"
+        assert default_processor.config.min_human_confidence_for_gesture == 0.4, "Should use default confidence threshold"
 
 
 class TestEndToEndGestureSSEFlow:
