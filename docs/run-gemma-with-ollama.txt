@@ -1,0 +1,87 @@
+Run Gemma with Ollama
+
+Running generative artificial intelligence (AI) models like Gemma can be challenging without the right hardware. Open source frameworks such as llama.cpp and Ollama make this easier by setting up a pre-configured runtime environment that lets you to run versions of Gemma with less compute resources. In fact, using llama.cpp and Ollama you can run versions of Gemma on a laptop or other small computing device without a graphics processing unit (GPU).
+
+In order to run Gemma models with less compute resources, the llama.cpp and Ollama frameworks use quantized versions of the models in the Georgi Gerganov Unified Format (GGUF) model file format. These quantized models are modified to process requests using smaller, less precise data. Using less precise data in quantized models to process requests typically lowers the quality of the models output, but with the benefit of also lowering the compute resource costs.
+
+This guide describes how to set up and use Ollama to run Gemma to generate text responses.
+
+Setup
+This section describes how to set up Ollama and prepare a Gemma model instance to respond to requests, including requesting model access, installing software, and configuring a Gemma model in Ollama.
+
+Get access to Gemma models
+Before working with Gemma models, make sure you have requested access via Kaggle and reviewed the Gemma terms of use.
+
+Install Ollama
+Before you can use Gemma with Ollama, you must download and install the Ollama software on your computing device.
+
+To download and install Ollama:
+
+Navigate to the download page: https://ollama.com/download
+Select your operating system, click the Download button or follow the instructions on the download page.
+Install the application by running the installer.
+Windows: Run the installer *.exe file and follow the instructions.
+Mac: Unpack the zip package and move the Ollama application folder to your Applications directory.
+Linux: Follow the instructions in bash script installer.
+Confirm that Ollama is installed by opening a terminal window and entering the following command:
+
+
+ollama --version
+You should see a response similar to: ollama version is #.#.##. If you do not get this result, make sure that the Ollama executable is added to your operating system path.
+
+Configure Gemma in Ollama
+The Ollama installation package does not include any models by default. You download a model using the pull command.
+
+To configure Gemma in Ollama:
+
+Download and configure the default Gemma 3 variant by opening a terminal window and entering the following command:
+
+
+ollama pull gemma3
+After completing the download you can confirm the model is available with the following command:
+
+
+ollama list
+By default, Ollama downloads the 4 billion parameter, 4-bit quantized (Q4_0) Gemma model variant. You can also download and use other sizes of the Gemma model by specifying a parameter size.
+
+Models are specified as <model_name>:<tag>. For the Gemma 3, four sizes: 1B, 4B, 12B and 27B parameters:
+
+1B Parameters gemma3:1b
+4B Parameters gemma3:4b
+12B Parameters gemma3:12b
+27B Parameters gemma3:27b
+You can find the available tags on the Ollama website, including Gemma 3, Gemma 2 and Gemma.
+
+Generate responses
+When you finish installing a Gemma model in Ollama, you can generate responses immediately using Ollama's command line interface run command. Ollama also configures a web service for accessing the model, which you can test using the curl command.
+
+To generate response from the command line:
+
+In a terminal window, and entering the following command:
+
+
+ollama run gemma3 "roses are red"
+Include the path to your image to use a visual input:
+
+
+ollama run gemma3 "caption this image /Users/$USER/Desktop/surprise.png"
+Important: The Gemma 3 1B size models are text only and don't support image input.
+To generate a response using the Ollama local web service:
+
+In a terminal window, and entering the following command:
+
+
+curl http://localhost:11434/api/generate -d '{\
+  "model": "gemma3",\
+  "prompt":"roses are red"\
+}'
+Include a list of base64-encoded images to use a visual input:
+
+
+curl http://localhost:11434/api/generate -d '{\
+  "model": "gemma3",\
+  "prompt":"caption this image",\
+  "images":[...]\
+}'
+Tuned Gemma models
+Ollama provides a set of official Gemma model variants for immediate use which are quantized and saved in GGUF format. You can use your own tuned Gemma models with Ollama by converting them to GGUF format. Ollama includes some functions to convert tuned models from a Modelfile format to GGUF. For more information on how to convert your tuned model to GGUF, see the Ollama README.
