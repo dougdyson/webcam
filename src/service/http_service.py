@@ -110,10 +110,13 @@ class HTTPDetectionService:
         # Detection history (if enabled)
         self.detection_history: deque = deque(maxlen=config.history_limit) if config.enable_history else None
         
+        # NEW: Description service integration for Phase 4.1
+        self._description_service = None
+        
         # Create FastAPI app
         self.app = FastAPI(
             title="Webcam Detection HTTP API",
-            description="HTTP API for human presence detection",
+            description="HTTP API for human presence detection and AI descriptions",
             version="1.0.0"
         )
         
@@ -164,6 +167,65 @@ class HTTPDetectionService:
                 "current_confidence": self.current_status.confidence
             })
         
+        @self.app.get("/description/latest")
+        async def get_latest_description():
+            """Get the most recent snapshot description from Ollama."""
+            try:
+                # Check if description service is available
+                if self._description_service is None:
+                    raise HTTPException(
+                        status_code=503, 
+                        detail="Description service not available"
+                    )
+                
+                # Get latest description
+                description_result = self._description_service.get_latest_description()
+                
+                # Handle no description available
+                if description_result is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="No description available"
+                    )
+                
+                # Handle description service errors
+                if hasattr(description_result, 'success') and not description_result.success:
+                    return JSONResponse(
+                        status_code=200,
+                        content={
+                            "success": False,
+                            "error": getattr(description_result, 'error', 'Unknown error'),
+                            "description": None,
+                            "confidence": 0.0,
+                            "timestamp": datetime.now().isoformat(),
+                            "processing_time_ms": 0,
+                            "cached": False
+                        }
+                    )
+                
+                # Successful description response
+                response_data = {
+                    "success": True,
+                    "description": description_result.description,
+                    "confidence": getattr(description_result, 'confidence', 1.0),
+                    "timestamp": description_result.timestamp.isoformat() if hasattr(description_result.timestamp, 'isoformat') else str(description_result.timestamp),
+                    "processing_time_ms": getattr(description_result, 'processing_time_ms', 0),
+                    "cached": getattr(description_result, 'cached', False)
+                }
+                
+                return JSONResponse(content=response_data)
+                
+            except HTTPException:
+                # Re-raise HTTP exceptions
+                raise
+            except Exception as e:
+                # Handle unexpected errors
+                self.logger.error(f"Error getting latest description: {e}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Internal server error retrieving description"
+                )
+        
         if self.config.enable_history:
             @self.app.get("/history")
             async def get_detection_history():
@@ -179,6 +241,16 @@ class HTTPDetectionService:
         """Setup integration with detection event publisher."""
         event_publisher.subscribe(self._handle_detection_event)
         self._event_publisher_subscribed = True
+    
+    def setup_description_integration(self, description_service) -> None:
+        """Setup integration with Ollama description service."""
+        self._description_service = description_service
+        self.logger.info("Description service integrated with HTTP API")
+    
+    @property
+    def description_service(self):
+        """Get the description service instance."""
+        return self._description_service
     
     def _handle_detection_event(self, event: ServiceEvent) -> None:
         """Handle detection events from the detection system."""
