@@ -111,6 +111,26 @@ curl http://localhost:8766/events/gestures/my_app
 # → Real-time gesture events for web dashboards
 ```
 
+## 🔧 Utility Scripts
+
+The project includes helpful scripts for monitoring and debugging:
+
+```bash
+# Real-time monitoring (run in separate terminal)
+python scripts/monitor_detection_status.py
+# → 👤 HUMAN | Conf: 0.85 | Gesture: stop (0.92) | Frames: 1250 | FPS: 28.5
+
+# Visual debugging with live video feed
+python scripts/visual_gesture_debug.py
+# → Shows webcam feed with detection overlays and landmarks
+```
+
+**Available Scripts:**
+- **`monitor_detection_status.py`** - Clean real-time status monitoring
+- **`visual_gesture_debug.py`** - Visual debugging with video overlays
+
+See [scripts/README.md](scripts/README.md) for detailed usage instructions.
+
 ## 🎯 Detection Types
 
 ### MultiModal (Recommended)
@@ -210,11 +230,21 @@ pytest tests/test_detection/ -v
 
 ## 📖 Documentation
 
+**[📚 Complete Documentation Index](docs/README.md)** - Find exactly what you need
+
+**Essential Guides:**
 - **[Architecture Guide](ARCHITECTURE.md)** - System design and components
-- **[Configuration Guide](docs/CONFIGURATION_GUIDE.md)** - Detailed setup options
-- **[Integration Examples](docs/INTEGRATION_EXAMPLES.md)** - Advanced usage patterns
-- **[Ollama Integration](docs/ollama/INTEGRATION_GUIDE.md)** - AI description setup
+- **[Configuration Guide](docs/guides/CONFIGURATION_GUIDE.md)** - Detailed setup options
+- **[Integration Examples](docs/guides/INTEGRATION_EXAMPLES.md)** - Advanced usage patterns
+
+**Feature Documentation:**
+- **[Ollama Integration](docs/features/ollama/INTEGRATION_GUIDE.md)** - AI description setup
+- **[Gesture Performance](docs/features/GESTURE_PERFORMANCE_OPTIMIZATIONS.md)** - Hand detection optimization
+
+**Development Resources:**
 - **[Development Guide](docs/development/TDD_METHODOLOGY.md)** - Contributing guidelines
+- **[Code Examples](docs/examples/)** - 7,600+ lines of practical patterns
+- **[Utility Scripts](scripts/README.md)** - Monitoring and debugging tools
 
 ## 🚨 System Requirements
 
@@ -254,4 +284,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 *Built with ❤️ for developers who need reliable, local human detection.*
 
-**[Get Started →](docs/QUICK_START.md)** | **[View Examples →](docs/INTEGRATION_EXAMPLES.md)** | **[Architecture →](ARCHITECTURE.md)** 
+**[Get Started →](docs/README.md)** | **[View Examples →](docs/guides/INTEGRATION_EXAMPLES.md)** | **[Architecture →](ARCHITECTURE.md)** 
