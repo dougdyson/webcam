@@ -128,6 +128,182 @@ The current implementation focuses on a single, highly reliable gesture:
 - Provides position data for advanced applications
 - Only runs when human presence is detected (performance optimized)
 
+## Snapshot Feature
+
+The snapshot system captures and stores webcam frames when humans are detected, enabling powerful applications like AI-powered scene descriptions and time-based frame retrieval.
+
+### Key Components
+
+- **SnapshotBuffer**: Circular buffer storing recent frames with metadata
+- **SnapshotTrigger**: Intelligent triggering based on detection confidence
+- **Snapshot & SnapshotMetadata**: Frame data with timestamp and detection info
+
+### Basic Snapshot Usage
+
+```python
+from src.ollama.snapshot_buffer import SnapshotBuffer, Snapshot, SnapshotMetadata
+from src.ollama.snapshot_trigger import SnapshotTrigger, SnapshotTriggerConfig
+
+# Setup snapshot system
+snapshot_buffer = SnapshotBuffer(max_size=20)
+snapshot_trigger = SnapshotTrigger(
+    SnapshotTriggerConfig(
+        min_confidence_threshold=0.7,
+        debounce_frames=3,  # Prevent rapid triggering
+        buffer_max_size=20
+    )
+)
+
+# Process frame and potentially capture snapshot
+def process_frame(frame, detection_result):
+    # Process with snapshot trigger
+    snapshot_captured = snapshot_trigger.process_detection(frame, detection_result)
+    
+    if snapshot_captured:
+        print(f"📸 Snapshot captured! (confidence: {detection_result.confidence:.2f})")
+        
+        # Get latest snapshot for processing
+        latest_snapshot = snapshot_trigger.get_latest_snapshot()
+        return latest_snapshot
+    
+    return None
+```
+
+### AI Description Integration
+
+```python
+from src.ollama.description_service import DescriptionService
+from src.ollama.client import OllamaClient, OllamaConfig
+
+# Setup AI description service
+ollama_client = OllamaClient(OllamaConfig())
+description_service = DescriptionService(ollama_client)
+
+async def generate_description_for_snapshot(snapshot):
+    """Generate AI description for a captured snapshot."""
+    try:
+        result = await description_service.describe_snapshot(snapshot)
+        
+        if result.error is None:
+            print(f"✨ Description: {result.description}")
+            print(f"🎯 Confidence: {result.confidence:.2f}")
+            print(f"💾 Cached: {'Yes' if result.cached else 'No'}")
+            return result.description
+        else:
+            print(f"❌ Description failed: {result.error}")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Error generating description: {e}")
+        return None
+```
+
+### Time-Based Snapshot Retrieval
+
+```python
+from datetime import datetime, timedelta
+
+# Get snapshots from the last 30 seconds
+cutoff_time = datetime.now() - timedelta(seconds=30)
+recent_snapshots = snapshot_trigger.buffer.get_snapshots_since(cutoff_time)
+
+print(f"Found {len(recent_snapshots)} snapshots in last 30 seconds")
+
+# Process recent high-confidence snapshots
+for snapshot in recent_snapshots:
+    if snapshot.metadata.confidence > 0.8:
+        timestamp = snapshot.metadata.timestamp.strftime("%H:%M:%S")
+        print(f"High-confidence snapshot at {timestamp}: {snapshot.metadata.confidence:.2f}")
+```
+
+### Snapshot Buffer Statistics
+
+```python
+# Get buffer usage statistics
+stats = snapshot_trigger.buffer.get_statistics()
+
+print(f"Buffer utilization: {stats['utilization_percent']:.1f}%")
+print(f"Current size: {stats['current_size']}/{stats['max_size']}")
+print(f"Memory usage: {stats['total_memory_bytes']} bytes")
+
+if stats['current_size'] > 0:
+    oldest = stats['oldest_timestamp']
+    newest = stats['newest_timestamp']
+    time_span = (newest - oldest).total_seconds()
+    print(f"Time span: {time_span:.1f} seconds")
+```
+
+### Complete Snapshot Client Example
+
+```python
+import asyncio
+from datetime import datetime
+from src.camera.manager import CameraManager
+from src.camera.config import CameraConfig
+from src.detection import create_detector, DetectorConfig
+from src.ollama.snapshot_trigger import SnapshotTrigger, SnapshotTriggerConfig
+
+class SnapshotClient:
+    def __init__(self):
+        self.camera = CameraManager(CameraConfig())
+        self.detector = create_detector('multimodal', DetectorConfig())
+        self.snapshot_trigger = SnapshotTrigger(
+            SnapshotTriggerConfig(min_confidence_threshold=0.7)
+        )
+        
+    def initialize(self):
+        self.detector.initialize()
+        
+    def cleanup(self):
+        self.camera.cleanup()
+        self.detector.cleanup()
+        
+    async def capture_snapshots(self, duration=60):
+        """Capture snapshots for specified duration."""
+        print(f"📸 Capturing snapshots for {duration} seconds...")
+        
+        start_time = datetime.now()
+        snapshots_captured = 0
+        
+        while (datetime.now() - start_time).total_seconds() < duration:
+            # Get frame and run detection
+            frame = self.camera.get_frame()
+            if frame is None:
+                await asyncio.sleep(0.1)
+                continue
+                
+            detection_result = self.detector.detect(frame)
+            
+            # Process with snapshot trigger
+            if self.snapshot_trigger.process_detection(frame, detection_result):
+                snapshots_captured += 1
+                print(f"📸 Snapshot {snapshots_captured} captured!")
+                
+            await asyncio.sleep(0.1)
+        
+        print(f"✅ Captured {snapshots_captured} snapshots")
+        return snapshots_captured
+
+# Usage
+async def main():
+    client = SnapshotClient()
+    client.initialize()
+    
+    try:
+        await client.capture_snapshots(30)  # Capture for 30 seconds
+        
+        # Get recent snapshots
+        recent = client.snapshot_trigger.buffer.get_snapshots_since(
+            datetime.now() - timedelta(seconds=60)
+        )
+        print(f"Buffer contains {len(recent)} recent snapshots")
+        
+    finally:
+        client.cleanup()
+
+asyncio.run(main())
+```
+
 ## Client Examples
 
 ### Simple Client Class
@@ -408,11 +584,11 @@ except Exception as e:
 
 ## Complete Example
 
-See `docs/simple_client_example.py` for a complete, runnable example that demonstrates all integration patterns.
+See `docs/examples/simple_client_example.py` for a complete, runnable example that demonstrates all integration patterns.
 
 ## Advanced Usage
 
 For more advanced integration patterns, see:
-- `docs/client_examples.py` - Comprehensive client examples
-- `docs/package_integration_examples.py` - Package-level integration
-- `docs/service_patterns.py` - Service architecture patterns 
+- `docs/examples/client_examples.py` - Comprehensive client examples
+- `docs/examples/package_integration_examples.py` - Package-level integration
+- `docs/examples/service_patterns.py` - Service architecture patterns 

@@ -400,11 +400,7 @@ class DashboardEventProcessor:
         print(f"🖐️ Gesture: {gesture_type} (confidence: {confidence:.2f})")
         
         # Update dashboard display
-        await self.update_dashboard({
-            'gesture': gesture_type,
-            'gesture_confidence': confidence,
-            'last_gesture_time': datetime.now().isoformat()
-        })
+        await self.update_dashboard(data)
     
     async def handle_presence_event(self, data: Dict):
         """Handle presence change events."""
@@ -452,6 +448,582 @@ async def main():
 
 # Run dashboard processor
 asyncio.run(main())
+```
+
+## Snapshot and AI Description Integration
+
+### Basic Snapshot Capture with AI Descriptions
+```python
+import asyncio
+import numpy as np
+from datetime import datetime, timedelta
+from typing import Optional, List, Dict
+
+from src.camera.manager import CameraManager
+from src.camera.config import CameraConfig
+from src.detection import create_detector, DetectorConfig
+from src.ollama.snapshot_buffer import SnapshotBuffer, Snapshot, SnapshotMetadata
+from src.ollama.snapshot_trigger import SnapshotTrigger, SnapshotTriggerConfig
+from src.ollama.description_service import DescriptionService
+from src.ollama.client import OllamaClient, OllamaConfig
+
+class AIDescriptionSystem:
+    """System for capturing snapshots and generating AI descriptions."""
+    
+    def __init__(self, ollama_available: bool = True):
+        # Setup camera and detection
+        self.camera = CameraManager(CameraConfig())
+        self.detector = create_detector('multimodal', DetectorConfig())
+        
+        # Setup snapshot system
+        self.snapshot_trigger = SnapshotTrigger(
+            SnapshotTriggerConfig(
+                min_confidence_threshold=0.7,
+                debounce_frames=3,
+                buffer_max_size=50
+            )
+        )
+        
+        # Setup AI descriptions (optional)
+        self.description_service = None
+        if ollama_available:
+            try:
+                ollama_client = OllamaClient(OllamaConfig())
+                self.description_service = DescriptionService(ollama_client)
+                print("✅ AI description service enabled")
+            except Exception as e:
+                print(f"⚠️ AI descriptions unavailable: {e}")
+        
+        # Statistics and state
+        self.snapshots_captured = 0
+        self.descriptions_generated = 0
+        self.active_descriptions = {}  # Cache recent descriptions
+        
+    def initialize(self):
+        """Initialize all components."""
+        self.detector.initialize()
+        print("🔧 AI Description System initialized")
+    
+    def cleanup(self):
+        """Clean up resources."""
+        self.camera.cleanup()
+        self.detector.cleanup()
+        print("🧹 AI Description System cleanup complete")
+    
+    def capture_snapshot_if_human_detected(self, frame: np.ndarray) -> Optional[Snapshot]:
+        """Capture snapshot if human is detected with sufficient confidence."""
+        detection_result = self.detector.detect(frame)
+        
+        snapshot_captured = self.snapshot_trigger.process_detection(frame, detection_result)
+        
+        if snapshot_captured:
+            self.snapshots_captured += 1
+            latest_snapshot = self.snapshot_trigger.get_latest_snapshot()
+            print(f"📸 Snapshot captured (confidence: {detection_result.confidence:.2f})")
+            return latest_snapshot
+        
+        return None
+    
+    async def generate_description_for_latest_snapshot(self) -> Optional[Dict]:
+        """Generate AI description for the most recent snapshot."""
+        if not self.description_service:
+            return None
+        
+        latest_snapshot = self.snapshot_trigger.get_latest_snapshot()
+        if not latest_snapshot:
+            print("❌ No snapshot available for description")
+            return None
+        
+        try:
+            result = await self.description_service.describe_snapshot(latest_snapshot)
+            
+            if result.error is None:
+                self.descriptions_generated += 1
+                
+                description_data = {
+                    'description': result.description,
+                    'confidence': result.confidence,
+                    'timestamp': latest_snapshot.metadata.timestamp,
+                    'processing_time': result.processing_time_ms / 1000,
+                    'cached': result.cached,
+                    'snapshot_confidence': latest_snapshot.metadata.confidence
+                }
+                
+                # Cache the description
+                snapshot_id = id(latest_snapshot)
+                self.active_descriptions[snapshot_id] = description_data
+                
+                print(f"✨ Description: {result.description}")
+                print(f"🎯 Confidence: {result.confidence:.2f}")
+                print(f"⏱️ Processing time: {description_data['processing_time']:.1f}s")
+                
+                return description_data
+                
+            else:
+                print(f"❌ Description failed: {result.error}")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Error generating description: {e}")
+            return None
+    
+    def get_recent_snapshots_with_descriptions(self, minutes: int = 10) -> List[Dict]:
+        """Get recent snapshots with their AI descriptions."""
+        cutoff_time = datetime.now() - timedelta(minutes=minutes)
+        recent_snapshots = self.snapshot_trigger.buffer.get_snapshots_since(cutoff_time)
+        
+        results = []
+        for snapshot in recent_snapshots:
+            snapshot_id = id(snapshot)
+            
+            snapshot_data = {
+                'timestamp': snapshot.metadata.timestamp,
+                'confidence': snapshot.metadata.confidence,
+                'human_present': snapshot.metadata.human_present,
+                'frame_shape': snapshot.frame.shape,
+                'description': self.active_descriptions.get(snapshot_id, {}).get('description'),
+                'description_confidence': self.active_descriptions.get(snapshot_id, {}).get('confidence')
+            }
+            
+            results.append(snapshot_data)
+        
+        return results
+    
+    def get_statistics(self) -> Dict:
+        """Get comprehensive system statistics."""
+        buffer_stats = self.snapshot_trigger.buffer.get_statistics()
+        
+        return {
+            'snapshots_captured': self.snapshots_captured,
+            'descriptions_generated': self.descriptions_generated,
+            'buffer_utilization': buffer_stats.get('utilization_percent', 0),
+            'active_descriptions': len(self.active_descriptions),
+            'buffer_size': buffer_stats.get('current_size', 0),
+            'memory_usage_bytes': buffer_stats.get('total_memory_bytes', 0)
+        }
+
+# Usage Example
+async def ai_description_demo():
+    """Demo of AI description system."""
+    system = AIDescriptionSystem()
+    system.initialize()
+    
+    try:
+        print("🎬 Starting AI description demo for 60 seconds...")
+        print("👤 Move in front of camera to trigger snapshots and descriptions")
+        
+        start_time = datetime.now()
+        last_description_time = None
+        
+        while (datetime.now() - start_time).total_seconds() < 60:
+            # Get frame from camera
+            frame = system.camera.get_frame()
+            if frame is None:
+                await asyncio.sleep(0.1)
+                continue
+            
+            # Capture snapshot if human detected
+            snapshot = system.capture_snapshot_if_human_detected(frame)
+            
+            # Generate description periodically (every 10 seconds)
+            current_time = datetime.now()
+            if (snapshot and 
+                (last_description_time is None or 
+                 (current_time - last_description_time).total_seconds() > 10)):
+                
+                description_data = await system.generate_description_for_latest_snapshot()
+                if description_data:
+                    last_description_time = current_time
+            
+            await asyncio.sleep(0.1)
+        
+        # Show final statistics
+        stats = system.get_statistics()
+        print(f"\n📊 Final Statistics:")
+        print(f"   Snapshots captured: {stats['snapshots_captured']}")
+        print(f"   Descriptions generated: {stats['descriptions_generated']}")
+        print(f"   Buffer utilization: {stats['buffer_utilization']:.1f}%")
+        
+        # Show recent snapshots with descriptions
+        recent_with_descriptions = system.get_recent_snapshots_with_descriptions(minutes=5)
+        print(f"\n📋 Recent snapshots with descriptions ({len(recent_with_descriptions)}):")
+        for i, item in enumerate(recent_with_descriptions[-3:]):  # Show last 3
+            ts = item['timestamp'].strftime("%H:%M:%S")
+            desc = item['description'] or "No description"
+            conf = item['confidence']
+            print(f"   {i+1}. {ts} (conf: {conf:.2f}) - {desc[:60]}...")
+        
+    finally:
+        system.cleanup()
+
+# Run the demo
+# asyncio.run(ai_description_demo())
+```
+
+### Smart Scene Analysis for Home Automation
+```python
+import asyncio
+import re
+from datetime import datetime, timedelta
+from typing import Dict, List, Callable
+
+class SmartSceneAnalyzer:
+    """Analyze scenes using AI descriptions to trigger smart home actions."""
+    
+    def __init__(self, ai_system: AIDescriptionSystem):
+        self.ai_system = ai_system
+        self.scene_triggers = {}  # Scene pattern -> callback mapping
+        self.recent_scenes = []  # History of recent scene descriptions
+        
+    def register_scene_trigger(self, pattern: str, callback: Callable[[Dict], None], description: str = ""):
+        """Register a callback for specific scene patterns."""
+        self.scene_triggers[pattern] = {
+            'callback': callback,
+            'description': description,
+            'matches': 0
+        }
+        print(f"📋 Registered scene trigger: {description or pattern}")
+    
+    async def analyze_and_trigger_automations(self, duration_minutes: int = 30):
+        """Continuously analyze scenes and trigger appropriate automations."""
+        print(f"🔍 Starting scene analysis for {duration_minutes} minutes...")
+        
+        start_time = datetime.now()
+        last_analysis_time = None
+        
+        while (datetime.now() - start_time).total_seconds() < (duration_minutes * 60):
+            # Get frame and capture snapshot if human detected
+            frame = self.ai_system.camera.get_frame()
+            if frame is None:
+                await asyncio.sleep(0.5)
+                continue
+            
+            snapshot = self.ai_system.capture_snapshot_if_human_detected(frame)
+            
+            # Analyze scene every 15 seconds if we have new snapshots
+            current_time = datetime.now()
+            if (snapshot and 
+                (last_analysis_time is None or 
+                 (current_time - last_analysis_time).total_seconds() > 15)):
+                
+                await self.analyze_current_scene()
+                last_analysis_time = current_time
+            
+            await asyncio.sleep(0.5)
+    
+    async def analyze_current_scene(self):
+        """Analyze current scene and trigger matching automations."""
+        description_data = await self.ai_system.generate_description_for_latest_snapshot()
+        
+        if not description_data:
+            return
+        
+        description = description_data['description'].lower()
+        timestamp = description_data['timestamp']
+        confidence = description_data['confidence']
+        
+        # Add to recent scenes history
+        scene_record = {
+            'description': description,
+            'timestamp': timestamp,
+            'confidence': confidence,
+            'triggers_fired': []
+        }
+        
+        # Check all registered triggers
+        for pattern, trigger_info in self.scene_triggers.items():
+            if re.search(pattern.lower(), description):
+                print(f"🎯 Scene match: '{pattern}' in '{description[:50]}...'")
+                
+                # Fire the trigger
+                try:
+                    trigger_info['callback'](description_data)
+                    trigger_info['matches'] += 1
+                    scene_record['triggers_fired'].append(pattern)
+                except Exception as e:
+                    print(f"❌ Error in trigger '{pattern}': {e}")
+        
+        # Add to history and maintain size
+        self.recent_scenes.append(scene_record)
+        if len(self.recent_scenes) > 50:
+            self.recent_scenes.pop(0)
+    
+    def get_scene_analysis_statistics(self) -> Dict:
+        """Get statistics about scene analysis."""
+        recent_triggers = [scene for scene in self.recent_scenes if scene['triggers_fired']]
+        
+        trigger_stats = {}
+        for pattern, info in self.scene_triggers.items():
+            trigger_stats[pattern] = {
+                'matches': info['matches'],
+                'description': info['description']
+            }
+        
+        return {
+            'total_scenes_analyzed': len(self.recent_scenes),
+            'scenes_with_triggers': len(recent_triggers),
+            'trigger_statistics': trigger_stats,
+            'recent_scenes': self.recent_scenes[-5:]  # Last 5 scenes
+        }
+
+# Smart home automation callbacks
+def kitchen_cooking_detected(scene_data: Dict):
+    """Triggered when cooking activity is detected."""
+    description = scene_data['description']
+    confidence = scene_data['confidence']
+    
+    print(f"🍳 Cooking detected (confidence: {confidence:.2f})")
+    print(f"   Scene: {description}")
+    
+    # Smart home actions:
+    # - Turn on kitchen ventilation
+    # - Set appropriate lighting
+    # - Start cooking timer
+    # - Enable cooking mode on smart devices
+    
+def reading_activity_detected(scene_data: Dict):
+    """Triggered when reading activity is detected."""
+    print(f"📚 Reading activity detected")
+    print(f"   Scene: {scene_data['description']}")
+    
+    # Smart home actions:
+    # - Dim ambient lighting
+    # - Reduce distractions (lower music, pause notifications)
+    # - Optimize reading lighting
+
+def exercise_activity_detected(scene_data: Dict):
+    """Triggered when exercise activity is detected."""
+    print(f"💪 Exercise activity detected")
+    print(f"   Scene: {scene_data['description']}")
+    
+    # Smart home actions:
+    # - Increase ventilation
+    # - Play workout music
+    # - Monitor air quality
+    # - Set exercise lighting
+
+def working_at_desk_detected(scene_data: Dict):
+    """Triggered when work activity is detected."""
+    print(f"💻 Work activity detected")
+    print(f"   Scene: {scene_data['description']}")
+    
+    # Smart home actions:
+    # - Optimize desk lighting
+    # - Enable focus mode (block distractions)
+    # - Start productivity timer
+    # - Adjust room temperature for comfort
+
+# Usage Example
+async def smart_scene_demo():
+    """Demo of smart scene analysis system."""
+    ai_system = AIDescriptionSystem()
+    ai_system.initialize()
+    
+    scene_analyzer = SmartSceneAnalyzer(ai_system)
+    
+    # Register scene triggers with patterns
+    scene_analyzer.register_scene_trigger(
+        r'(cooking|kitchen|stove|pot|pan|cutting|chopping)',
+        kitchen_cooking_detected,
+        "Kitchen cooking activity"
+    )
+    
+    scene_analyzer.register_scene_trigger(
+        r'(reading|book|magazine|newspaper)',
+        reading_activity_detected,
+        "Reading activity"
+    )
+    
+    scene_analyzer.register_scene_trigger(
+        r'(exercise|workout|yoga|stretching|fitness)',
+        exercise_activity_detected,
+        "Exercise activity"
+    )
+    
+    scene_analyzer.register_scene_trigger(
+        r'(computer|laptop|desk|working|typing|office)',
+        working_at_desk_detected,
+        "Work at desk activity"
+    )
+    
+    try:
+        # Run scene analysis for 10 minutes
+        await scene_analyzer.analyze_and_trigger_automations(duration_minutes=10)
+        
+        # Show final statistics
+        stats = scene_analyzer.get_scene_analysis_statistics()
+        print(f"\n📊 Scene Analysis Results:")
+        print(f"   Total scenes analyzed: {stats['total_scenes_analyzed']}")
+        print(f"   Scenes with triggers: {stats['scenes_with_triggers']}")
+        
+        print(f"\n🎯 Trigger Statistics:")
+        for pattern, info in stats['trigger_statistics'].items():
+            print(f"   {info['description']}: {info['matches']} matches")
+        
+    finally:
+        ai_system.cleanup()
+
+# Run the demo
+# asyncio.run(smart_scene_demo())
+```
+
+### Snapshot Archive and Time-lapse Creation
+```python
+import cv2
+import os
+from datetime import datetime, timedelta
+from typing import List, Optional
+import numpy as np
+
+class SnapshotArchiveManager:
+    """Manage snapshot archives and create time-lapse videos."""
+    
+    def __init__(self, ai_system: AIDescriptionSystem, archive_dir: str = "snapshot_archive"):
+        self.ai_system = ai_system
+        self.archive_dir = archive_dir
+        self.ensure_archive_directory()
+    
+    def ensure_archive_directory(self):
+        """Create archive directory if it doesn't exist."""
+        os.makedirs(self.archive_dir, exist_ok=True)
+        print(f"📁 Archive directory: {self.archive_dir}")
+    
+    def save_snapshot_to_disk(self, snapshot: Snapshot, description: Optional[str] = None) -> str:
+        """Save snapshot to disk with metadata."""
+        timestamp = snapshot.metadata.timestamp
+        filename = f"snapshot_{timestamp.strftime('%Y%m%d_%H%M%S')}.jpg"
+        filepath = os.path.join(self.archive_dir, filename)
+        
+        # Save image
+        cv2.imwrite(filepath, snapshot.frame)
+        
+        # Save metadata
+        metadata_file = filepath.replace('.jpg', '_metadata.txt')
+        with open(metadata_file, 'w') as f:
+            f.write(f"Timestamp: {timestamp.isoformat()}\n")
+            f.write(f"Confidence: {snapshot.metadata.confidence:.3f}\n")
+            f.write(f"Human Present: {snapshot.metadata.human_present}\n")
+            f.write(f"Detection Source: {snapshot.metadata.detection_source}\n")
+            if description:
+                f.write(f"AI Description: {description}\n")
+        
+        print(f"💾 Saved snapshot: {filename}")
+        return filepath
+    
+    def save_recent_snapshots(self, minutes: int = 60) -> List[str]:
+        """Save all snapshots from the last N minutes to disk."""
+        cutoff_time = datetime.now() - timedelta(minutes=minutes)
+        recent_snapshots = self.ai_system.snapshot_trigger.buffer.get_snapshots_since(cutoff_time)
+        
+        saved_files = []
+        for snapshot in recent_snapshots:
+            filepath = self.save_snapshot_to_disk(snapshot)
+            saved_files.append(filepath)
+        
+        print(f"💾 Saved {len(saved_files)} snapshots from last {minutes} minutes")
+        return saved_files
+    
+    def create_timelapse_video(self, snapshot_files: List[str], output_filename: str = None, fps: int = 2) -> str:
+        """Create time-lapse video from snapshot files."""
+        if not snapshot_files:
+            print("❌ No snapshot files provided for time-lapse")
+            return None
+        
+        if output_filename is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            output_filename = f"timelapse_{timestamp}.mp4"
+        
+        output_path = os.path.join(self.archive_dir, output_filename)
+        
+        # Read first frame to get dimensions
+        first_frame = cv2.imread(snapshot_files[0])
+        if first_frame is None:
+            print(f"❌ Cannot read first frame: {snapshot_files[0]}")
+            return None
+        
+        height, width, _ = first_frame.shape
+        
+        # Create video writer
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        video_writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        
+        print(f"🎬 Creating time-lapse video with {len(snapshot_files)} frames at {fps} FPS...")
+        
+        for i, filepath in enumerate(snapshot_files):
+            frame = cv2.imread(filepath)
+            if frame is not None:
+                # Add timestamp overlay
+                timestamp_text = os.path.basename(filepath).replace('snapshot_', '').replace('.jpg', '')
+                cv2.putText(frame, timestamp_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                
+                video_writer.write(frame)
+                
+                if (i + 1) % 10 == 0:
+                    print(f"   Processed {i + 1}/{len(snapshot_files)} frames")
+        
+        video_writer.release()
+        print(f"✅ Time-lapse video created: {output_path}")
+        return output_path
+    
+    async def automated_archive_session(self, duration_minutes: int = 30, save_interval_minutes: int = 5):
+        """Run automated archiving session."""
+        print(f"📸 Starting automated archive session for {duration_minutes} minutes")
+        print(f"💾 Saving snapshots every {save_interval_minutes} minutes")
+        
+        start_time = datetime.now()
+        last_save_time = start_time
+        all_saved_files = []
+        
+        while (datetime.now() - start_time).total_seconds() < (duration_minutes * 60):
+            # Capture snapshots
+            frame = self.ai_system.camera.get_frame()
+            if frame is not None:
+                self.ai_system.capture_snapshot_if_human_detected(frame)
+            
+            # Save snapshots periodically
+            current_time = datetime.now()
+            if (current_time - last_save_time).total_seconds() >= (save_interval_minutes * 60):
+                saved_files = self.save_recent_snapshots(minutes=save_interval_minutes)
+                all_saved_files.extend(saved_files)
+                last_save_time = current_time
+            
+            await asyncio.sleep(0.5)
+        
+        # Save any remaining snapshots
+        final_saved = self.save_recent_snapshots(minutes=save_interval_minutes)
+        all_saved_files.extend(final_saved)
+        
+        # Create time-lapse video
+        if all_saved_files:
+            video_path = self.create_timelapse_video(all_saved_files, fps=3)
+            print(f"🎬 Time-lapse video: {video_path}")
+        
+        return all_saved_files
+
+# Usage Example
+async def archive_demo():
+    """Demo of snapshot archiving and time-lapse creation."""
+    ai_system = AIDescriptionSystem()
+    ai_system.initialize()
+    
+    archive_manager = SnapshotArchiveManager(ai_system)
+    
+    try:
+        # Run automated archiving for 5 minutes, saving every minute
+        saved_files = await archive_manager.automated_archive_session(
+            duration_minutes=5,
+            save_interval_minutes=1
+        )
+        
+        print(f"\n📊 Archive session complete:")
+        print(f"   Total files saved: {len(saved_files)}")
+        print(f"   Archive directory: {archive_manager.archive_dir}")
+        
+    finally:
+        ai_system.cleanup()
+
+# Run the demo
+# asyncio.run(archive_demo())
 ```
 
 ## Security System Integration
@@ -606,78 +1178,6 @@ async def main():
 
 # Run security monitoring
 asyncio.run(main())
-```
-
-## Testing and Development Tools
-
-### Mock Service for Testing
-```python
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
-import json
-import asyncio
-from datetime import datetime
-
-app = FastAPI()
-
-# Mock detection data
-mock_presence_data = {
-    "human_present": True,
-    "confidence": 0.85,
-    "timestamp": datetime.now().isoformat(),
-    "detection_source": "mock_service"
-}
-
-@app.get("/presence/simple")
-async def mock_presence_simple():
-    """Mock simple presence endpoint."""
-    return {"human_present": mock_presence_data["human_present"]}
-
-@app.get("/presence")  
-async def mock_presence():
-    """Mock full presence endpoint."""
-    return mock_presence_data
-
-@app.get("/health")
-async def mock_health():
-    """Mock health endpoint."""
-    return {"status": "healthy", "service": "mock"}
-
-async def mock_gesture_events():
-    """Mock gesture event stream."""
-    while True:
-        # Simulate gesture event every 10 seconds
-        event_data = {
-            "event_type": "gesture_detected",
-            "timestamp": datetime.now().isoformat(),
-            "data": {
-                "gesture_type": "stop",
-                "confidence": 0.92,
-                "hand": "right"
-            }
-        }
-        
-        yield f"data: {json.dumps(event_data)}\n\n"
-        await asyncio.sleep(10)
-        
-        # Heartbeat
-        yield "data: [HEARTBEAT]\n\n"
-        await asyncio.sleep(5)
-
-@app.get("/events/gestures/{client_id}")
-async def mock_gesture_sse(client_id: str):
-    """Mock gesture SSE endpoint."""
-    return StreamingResponse(
-        mock_gesture_events(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*"
-        }
-    )
-
-# Run with: uvicorn mock_service:app --port 8767
 ```
 
 For more integration examples and advanced patterns, see the source code examples in the `examples/` directory. 
