@@ -18,7 +18,7 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from webcam_http_service import WebcamHTTPService, main
+from webcam_enhanced_service import EnhancedWebcamService as WebcamHTTPService, main
 from src.detection.result import DetectionResult
 from src.service.events import EventType
 
