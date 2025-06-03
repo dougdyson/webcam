@@ -347,4 +347,212 @@ class ConfigManager:
         with open(detection_config_file, 'w', encoding='utf-8') as f:
             yaml.dump(default_detection_config, f, default_flow_style=False, indent=2)
         
-        logger.info(f"Created default detection config: {detection_config_file}") 
+        logger.info(f"Created default detection config: {detection_config_file}")
+    
+    def load_ollama_config(self) -> Dict[str, Any]:
+        """
+        Load Ollama configuration parameters.
+        
+        Returns:
+            Dictionary containing Ollama configuration parameters
+            
+        Raises:
+            ConfigurationError: If config file not found or configuration is invalid
+        """
+        config_file = self.config_dir / "ollama_config.yaml"
+        
+        if not config_file.exists():
+            # Create default config if it doesn't exist
+            self._create_default_ollama_config()
+        
+        try:
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+            
+            if not config:
+                raise ConfigurationError("Ollama config file is empty or invalid")
+            
+            # Apply environment variable overrides
+            config = self._apply_ollama_env_overrides(config)
+            
+            # Validate Ollama configuration
+            self.validate_ollama_config(config)
+            
+            logger.debug(f"Loaded Ollama config: {config}")
+            
+            return config
+            
+        except yaml.YAMLError as e:
+            raise ConfigurationError(f"Error parsing Ollama config", e)
+        except ConfigurationError:
+            raise  # Re-raise ConfigurationError as-is
+        except Exception as e:
+            raise ConfigurationError(f"Unexpected error loading Ollama config", e)
+    
+    def validate_ollama_config(self, config: Dict[str, Any]) -> bool:
+        """
+        Validate Ollama configuration parameters.
+        
+        Args:
+            config: Ollama configuration dictionary
+            
+        Returns:
+            True if configuration is valid
+            
+        Raises:
+            ConfigurationError: If configuration is invalid
+        """
+        required_sections = ['client', 'description_service', 'async_processor', 'snapshot_buffer']
+        
+        # Check required sections
+        missing_sections = [section for section in required_sections if section not in config]
+        if missing_sections:
+            raise ConfigurationError(f"Missing required Ollama sections: {missing_sections}")
+        
+        # Validate client configuration
+        client_config = config['client']
+        required_client_fields = ['base_url', 'model', 'timeout_seconds', 'max_retries']
+        missing_client_fields = [field for field in required_client_fields if field not in client_config]
+        if missing_client_fields:
+            raise ConfigurationError(f"Missing required client fields: {missing_client_fields}")
+        
+        # Validate base_url format
+        base_url = client_config['base_url']
+        if not isinstance(base_url, str) or not (base_url.startswith('http://') or base_url.startswith('https://')):
+            raise ConfigurationError(f"Invalid base_url format: {base_url}")
+        
+        # Validate timeout
+        timeout = client_config['timeout_seconds']
+        if not isinstance(timeout, (int, float)) or timeout <= 0:
+            raise ConfigurationError(f"timeout_seconds must be positive, got: {timeout}")
+        
+        # Validate max_retries
+        max_retries = client_config['max_retries']
+        if not isinstance(max_retries, int) or max_retries < 0:
+            raise ConfigurationError(f"max_retries must be non-negative integer, got: {max_retries}")
+        
+        # Validate description service configuration
+        desc_config = config['description_service']
+        required_desc_fields = ['cache_ttl_seconds', 'max_concurrent_requests', 'enable_caching', 'enable_fallback_descriptions']
+        missing_desc_fields = [field for field in required_desc_fields if field not in desc_config]
+        if missing_desc_fields:
+            raise ConfigurationError(f"Missing required description service fields: {missing_desc_fields}")
+        
+        # Validate cache TTL
+        cache_ttl = desc_config['cache_ttl_seconds']
+        if not isinstance(cache_ttl, (int, float)) or cache_ttl <= 0:
+            raise ConfigurationError(f"cache_ttl_seconds must be positive, got: {cache_ttl}")
+        
+        # Validate async processor configuration
+        async_config = config['async_processor']
+        required_async_fields = ['max_queue_size', 'rate_limit_per_second', 'enable_retries']
+        missing_async_fields = [field for field in required_async_fields if field not in async_config]
+        if missing_async_fields:
+            raise ConfigurationError(f"Missing required async processor fields: {missing_async_fields}")
+        
+        # Validate snapshot buffer configuration
+        buffer_config = config['snapshot_buffer']
+        required_buffer_fields = ['max_size', 'min_confidence_threshold', 'debounce_frames']
+        missing_buffer_fields = [field for field in required_buffer_fields if field not in buffer_config]
+        if missing_buffer_fields:
+            raise ConfigurationError(f"Missing required snapshot buffer fields: {missing_buffer_fields}")
+        
+        # Validate confidence threshold
+        confidence = buffer_config['min_confidence_threshold']
+        if not isinstance(confidence, (int, float)) or not 0.0 <= confidence <= 1.0:
+            raise ConfigurationError(f"min_confidence_threshold must be between 0.0 and 1.0, got: {confidence}")
+        
+        return True
+    
+    def list_available_ollama_models(self) -> List[str]:
+        """
+        List available Ollama models.
+        
+        Returns:
+            List of available model names
+        """
+        # Default list of commonly available models
+        default_models = [
+            'gemma3:4b-it-q4_K_M',
+            'gemma3:12b-it-q4_K_M', 
+            'llama3.2-vision'
+        ]
+        
+        try:
+            # In a real implementation, this would query the Ollama service
+            # For now, return the default list
+            return default_models
+        except Exception:
+            logger.warning("Failed to query Ollama service for available models")
+            return default_models
+    
+    def _create_default_ollama_config(self) -> None:
+        """Create default ollama_config.yaml file."""
+        default_config = {
+            'client': {
+                'base_url': 'http://localhost:11434',
+                'model': 'gemma3:4b-it-q4_K_M',
+                'timeout_seconds': 30.0,
+                'max_retries': 2
+            },
+            'description_service': {
+                'cache_ttl_seconds': 300,
+                'max_concurrent_requests': 3,
+                'enable_caching': True,
+                'enable_fallback_descriptions': True
+            },
+            'async_processor': {
+                'max_queue_size': 100,
+                'rate_limit_per_second': 0.5,
+                'enable_retries': False
+            },
+            'snapshot_buffer': {
+                'max_size': 50,
+                'min_confidence_threshold': 0.7,
+                'debounce_frames': 3
+            }
+        }
+        
+        config_file = self.config_dir / "ollama_config.yaml"
+        
+        try:
+            with open(config_file, 'w', encoding='utf-8') as f:
+                yaml.dump(default_config, f, default_flow_style=False, indent=2)
+            
+            logger.info(f"Created default Ollama config: {config_file}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to create default Ollama config: {e}")
+    
+    def _apply_ollama_env_overrides(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Apply environment variable overrides to Ollama configuration."""
+        env_mappings = {
+            'OLLAMA_BASE_URL': ('client', 'base_url', str),
+            'OLLAMA_MODEL': ('client', 'model', str),
+            'OLLAMA_TIMEOUT': ('client', 'timeout_seconds', float),
+            'OLLAMA_MAX_RETRIES': ('client', 'max_retries', int),
+            'OLLAMA_CACHE_TTL': ('description_service', 'cache_ttl_seconds', int),
+            'OLLAMA_MAX_CONCURRENT': ('description_service', 'max_concurrent_requests', int),
+            'OLLAMA_ENABLE_CACHING': ('description_service', 'enable_caching', lambda x: x.lower() == 'true'),
+            'OLLAMA_QUEUE_SIZE': ('async_processor', 'max_queue_size', int),
+            'OLLAMA_RATE_LIMIT': ('async_processor', 'rate_limit_per_second', float),
+            'OLLAMA_BUFFER_SIZE': ('snapshot_buffer', 'max_size', int),
+            'OLLAMA_MIN_CONFIDENCE': ('snapshot_buffer', 'min_confidence_threshold', float),
+        }
+        
+        for env_var, (section, key, type_func) in env_mappings.items():
+            env_value = os.getenv(env_var)
+            if env_value is not None:
+                try:
+                    # Ensure section exists
+                    if section not in config:
+                        config[section] = {}
+                    
+                    # Convert and set value
+                    config[section][key] = type_func(env_value)
+                    logger.debug(f"Ollama override from env: {env_var} = {env_value}")
+                    
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Invalid environment variable {env_var}={env_value}: {e}")
+        
+        return config 

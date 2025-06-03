@@ -1,0 +1,18 @@
+async_processor:
+  enable_retries: false
+  max_queue_size: 100
+  rate_limit_per_second: 0.5
+client:
+  base_url: http://localhost:11434
+  max_retries: 2
+  model: gemma3:4b-it-q4_K_M
+  timeout_seconds: 30.0
+description_service:
+  cache_ttl_seconds: 300
+  enable_caching: true
+  enable_fallback_descriptions: true
+  max_concurrent_requests: 3
+snapshot_buffer:
+  debounce_frames: 3
+  max_size: 50
+  min_confidence_threshold: 0.7
