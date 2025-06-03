@@ -86,6 +86,25 @@ Quick-start examples for getting up and running with webcam-detection package.
 | 🏗️ **Custom service architecture** | `docs/service_patterns.py` |
 | 📚 **Complete API reference** | `docs/PACKAGE_USAGE.md` |
 
+## 🎭 Ollama Integration Examples ✨ NEW!
+
+### AI-Powered Image Descriptions
+- **`ollama_demo.py`** - Complete standalone demo of Ollama integration
+- **`README_OLLAMA_DEMO.md`** - Detailed setup and usage guide
+- **`run_ollama_demo.sh`** - Simple launcher script with prerequisites checking
+
+**Features**: Live webcam → Human detection → AI descriptions using local Ollama models
+
+**Prerequisites**: Ollama service running (`ollama serve`) with vision model (`ollama pull llama3.2-vision`)
+
+```bash
+# Quick start
+./examples/run_ollama_demo.sh
+
+# Or manually
+python examples/ollama_demo.py
+```
+
 ## 🏃 Run Examples
 
 ### Basic Detection

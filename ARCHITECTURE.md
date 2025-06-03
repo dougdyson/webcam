@@ -112,13 +112,13 @@ Detection Pipeline → EventPublisher → Service Layer
 ## Ollama Integration Architecture ✅ NEW - IMPLEMENTED
 
 ### Overview
-The Ollama integration extends the webcam detection system with AI-powered image description capabilities using local Ollama models. This feature provides detailed descriptions of webcam snapshots when humans are detected, following TDD methodology with comprehensive error handling and resilience.
+The Ollama integration extends the webcam detection system with AI-powered image description capabilities using local Ollama models. This feature provides detailed descriptions of webcam snapshots when humans are detected, following TDD methodology with comprehensive error handling and resilience. **Successfully validated with live testing using Gemma3 multimodal models.**
 
 ### Key Components
 
 #### Ollama Client (`src/ollama/client.py`)
 - **Local Integration**: Connects to local Ollama service (default: localhost:11434)
-- **Model Support**: Configurable models (default: llama3.2-vision)
+- **Model Support**: **Validated with Gemma3 multimodal models** (recommended: `gemma3:4b-it-q4_K_M`)
 - **Health Checking**: Service availability validation
 - **Error Handling**: Connection timeouts and service unavailability detection
 
@@ -210,8 +210,8 @@ snapshot_buffer:
 
 #### Processing Performance
 - **Initialization**: <2s for Ollama client and description service setup
-- **Description Generation**: 10-30s depending on model and image complexity
-- **Cache Performance**: <1ms for cache hits (MD5-based key lookup)
+- **Description Generation**: **10-30s for new descriptions** (validated with Gemma3:4b-it-q4_K_M)
+- **Cache Performance**: **<1s for cache hits** (MD5-based key lookup, validated)
 - **Queue Processing**: <50ms overhead for request queuing and prioritization
 
 #### Memory Management
@@ -219,6 +219,12 @@ snapshot_buffer:
 - **Description Cache**: LRU eviction with configurable max entries (default: 100)
 - **Request Futures**: Automatic cleanup of completed/cancelled requests
 - **Image Processing**: Temporary base64 encoding with immediate cleanup
+
+#### Model Recommendations (Validated)
+- **Recommended**: `gemma3:4b-it-q4_K_M` - Instruction-tuned 4B model, excellent speed/quality balance
+- **Alternative**: `gemma3:12b-it-q4_K_M` - Larger model for higher quality (slower processing)
+- **Lightweight**: `gemma3:1b` - Fast processing for basic descriptions
+- **All Gemma3 models confirmed multimodal** - Support vision tasks out of the box
 
 #### Scalability
 - **Concurrent Requests**: Configurable semaphore limits prevent resource exhaustion

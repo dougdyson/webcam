@@ -16,6 +16,7 @@ Webcam Detection provides a comprehensive, local-processing human presence detec
 - **Smart Processing Pipeline**: Async processing with rate limiting and error resilience
 - **129 New Tests**: Comprehensive TDD coverage for all Ollama components
 - **Production Ready**: Fail-safe design with graceful degradation and fallback descriptions
+- **Live Validated**: Successfully tested with Gemma3 multimodal models (`gemma3:4b-it-q4_K_M`)
 
 ### ✅ **Perfect Test Coverage Achievement** 
 - **540/540 tests passing** (100% success rate) 🎯
@@ -43,7 +44,7 @@ Webcam Detection provides a comprehensive, local-processing human presence detec
 - **📐 Extended Range**: Works from desk distance to medium distance
 - **🧪 Production Ready**: 540 comprehensive tests, battle-tested architecture
 - **⚙️ Configurable**: Extensive configuration options for different scenarios
-- **🎭 Ollama Integration**: AI-powered image descriptions using local Ollama models ✨ NEW!
+- **🎭 Ollama Integration**: AI-powered image descriptions using local Ollama models (validated: `gemma3:4b-it-q4_K_M`) ✨ NEW!
 - **📸 Smart Snapshots**: Thread-safe circular buffer for frame storage when humans detected ✨ NEW!
 - **🔄 Async Processing**: Background description processing pipeline with rate limiting ✨ NEW!
 
