@@ -45,6 +45,12 @@ from src.service.http_service import HTTPDetectionService, HTTPServiceConfig
 from src.service.sse_service import SSEDetectionService, SSEServiceConfig
 from src.service.events import EventPublisher
 
+# Ollama integration (NEW - Phase 6.2)
+from src.utils.config import ConfigManager
+from src.ollama.client import OllamaClient, OllamaConfig
+from src.ollama.description_service import DescriptionService
+from src.ollama.image_processing import OllamaImageProcessor
+
 # Configure logging to be quieter
 logging.basicConfig(level=logging.WARNING, format='%(message)s')  # Only warnings and errors
 logger = logging.getLogger(__name__)
@@ -71,24 +77,70 @@ class EnhancedWebcamService:
         self.http_service = None
         self.sse_service = None
         
+        # Ollama integration (NEW - Phase 6.2)
+        self.config_manager = None
+        self.ollama_config = None
+        self.ollama_client = None
+        self.ollama_image_processor = None
+        self.description_service = None
+        
         # State
         self.is_running = False
         self._shutdown_requested = False
+        self._description_service_failed = False
         
     def initialize(self):
         """Initialize all components with proper error handling."""
         try:
-            # Initialize camera (quiet)
+            # Step 1: Initialize configuration (FIRST)
+            self.config_manager = ConfigManager()
+            self.ollama_config = self.config_manager.load_ollama_config()
+            
+            # Step 2: Initialize camera (quiet)
             camera_config = CameraConfig()
             self.camera = CameraManager(camera_config)
             
-            # Initialize multimodal detector (quiet)
+            # Step 3: Initialize multimodal detector (quiet)
             self.detector = create_detector('multimodal')
             self.detector.initialize()
             
-            # TESTING: Re-enable gesture detector to test shoulder fix
+            # Step 4: Initialize gesture detector
             self.gesture_detector = GestureDetector()
             self.gesture_detector.initialize()
+            
+            # Step 5: Initialize Ollama components
+            try:
+                # Initialize OllamaClient with configuration
+                client_config = self.ollama_config['client']
+                ollama_config = OllamaConfig(
+                    model=client_config['model'],
+                    base_url=client_config['base_url'],
+                    timeout=client_config['timeout_seconds'],
+                    max_retries=client_config['max_retries']
+                )
+                self.ollama_client = OllamaClient(config=ollama_config)
+                
+                # Initialize OllamaImageProcessor
+                self.ollama_image_processor = OllamaImageProcessor()
+                
+                # Initialize DescriptionService with all required parameters
+                self.description_service = DescriptionService(
+                    ollama_client=self.ollama_client,
+                    image_processor=self.ollama_image_processor
+                )
+                
+                # NEW: Setup event publisher integration for description events (Phase 6.2)
+                self.description_service.set_event_publisher(self.event_publisher)
+                
+                logger.info("✅ Ollama integration initialized successfully")
+                
+            except Exception as ollama_error:
+                logger.warning(f"⚠️ Ollama integration failed: {ollama_error}")
+                logger.warning("📍 Service will continue without AI description features")
+                # Set flag to indicate description service failed but don't raise
+                self._description_service_failed = True
+                self.description_service = None
+                self.ollama_client = None
             
             # DISABLED: Initialize enhanced frame processor with BALANCED SETTINGS (prevent false positives but still work)
             # processor_config = EnhancedProcessorConfig(
@@ -118,6 +170,10 @@ class EnhancedWebcamService:
             self.http_service = HTTPDetectionService(http_config)
             self.http_service.setup_event_integration(self.event_publisher)
             
+            # NEW: Setup description integration with HTTP service (Phase 6.2)
+            if self.description_service:
+                self.http_service.setup_description_integration(self.description_service)
+            
             # ENABLED: Initialize SSE service (gesture streaming)
             sse_config = SSEServiceConfig(
                 host="localhost",
@@ -138,6 +194,15 @@ class EnhancedWebcamService:
     def _cleanup_on_error(self):
         """Clean up partially initialized components on error."""
         try:
+            # Cleanup Ollama components
+            if self.description_service and hasattr(self.description_service, 'cleanup'):
+                self.description_service.cleanup()
+            if self.ollama_client and hasattr(self.ollama_client, 'cleanup'):
+                self.ollama_client.cleanup()
+            if self.ollama_image_processor and hasattr(self.ollama_image_processor, 'cleanup'):
+                self.ollama_image_processor.cleanup()
+            
+            # Cleanup existing components
             if self.gesture_detector and hasattr(self.gesture_detector, 'cleanup'):
                 self.gesture_detector.cleanup()
             if self.detector and hasattr(self.detector, 'cleanup'):
@@ -154,6 +219,12 @@ class EnhancedWebcamService:
             self.frame_processor = None
             self.http_service = None
             self.sse_service = None
+            # Reset Ollama components
+            self.description_service = None
+            self.ollama_client = None
+            self.ollama_config = None
+            self.config_manager = None
+            self.ollama_image_processor = None
     
     def detection_loop(self):
         """Main detection loop - SIMPLIFIED like debug script."""        
@@ -218,6 +289,19 @@ class EnhancedWebcamService:
                                         print(f"Event publishing error: {e}")  # DON'T HIDE ERRORS
                         except Exception as e:
                             pass  # Don't let gesture detection break human detection
+                    
+                    # NEW: Process frame for AI description (Phase 6.2)
+                    if human_result.human_present and human_result.confidence > 0.6 and self.description_service:
+                        try:
+                            # Process frame for description
+                            description_result = self.description_service.describe_snapshot(frame)
+                            
+                            if description_result and hasattr(description_result, 'success') and description_result.success:
+                                # Description processing successful
+                                logger.debug(f"Description generated: {description_result.description}")
+                            
+                        except Exception as e:
+                            logger.debug(f"Description processing error: {e}")  # Don't break detection loop
                     
                     # Update HTTP service status (simple)
                     if self.http_service:
@@ -309,13 +393,27 @@ class EnhancedWebcamService:
         self._shutdown_requested = True
         self.is_running = False
         
-        # Cleanup components
+        # Cleanup Ollama components
+        if self.description_service and hasattr(self.description_service, 'cleanup'):
+            self.description_service.cleanup()
+        if self.ollama_client and hasattr(self.ollama_client, 'cleanup'):
+            self.ollama_client.cleanup()
+        if self.ollama_image_processor and hasattr(self.ollama_image_processor, 'cleanup'):
+            self.ollama_image_processor.cleanup()
+        
+        # Cleanup existing components
         if self.gesture_detector:
             self.gesture_detector.cleanup()
         if self.detector:
             self.detector.cleanup()
         if self.camera:
             self.camera.cleanup()
+        
+        # Set components to None
+        self.description_service = None
+        self.ollama_client = None
+        self.ollama_image_processor = None
+        self.gesture_detector = None
         
         logger.info("✅ Enhanced service shutdown complete")
     
