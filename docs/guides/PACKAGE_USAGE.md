@@ -149,13 +149,13 @@ finally:
 import subprocess
 
 # Option 1: Direct service execution
-subprocess.run(["conda", "activate", "webcam", "&&", "python", "webcam_enhanced_service.py"])
+subprocess.run(["conda", "activate", "webcam", "&&", "python", "webcam_service.py"])
 
 # Option 2: Background service
 import threading
 
 def start_enhanced_detection_service():
-    subprocess.run(["conda", "activate", "webcam", "&&", "python", "webcam_enhanced_service.py"])
+    subprocess.run(["conda", "activate", "webcam", "&&", "python", "webcam_service.py"])
 
 service_thread = threading.Thread(target=start_enhanced_detection_service, daemon=True)
 service_thread.start()

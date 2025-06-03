@@ -7,7 +7,7 @@ This guide shows you how to integrate the webcam gesture recognition system
 Server-Sent Events (SSE) for real-time gesture detection.
 
 QUICK START:
-1. Start enhanced webcam service: conda activate webcam && python webcam_enhanced_service.py
+1. Start enhanced webcam service: conda activate webcam && python webcam_service.py
 2. Use VoiceBotGestureIntegration class in your voice bot
 3. Connect to SSE: http://localhost:8766/events/gestures/your_client_id
 4. Handle gesture_detected events to pause/stop voice processing

@@ -11,7 +11,7 @@ from other Python applications. The service provides:
 
 Prerequisites:
     1. Start the webcam detection service:
-       python webcam_enhanced_service.py
+       python webcam_service.py
     
     2. Install required client dependencies:
        pip install requests sseclient-py asyncio aiohttp
@@ -552,7 +552,7 @@ def main():
     print("=" * 50)
     print()
     print("Make sure the webcam detection service is running:")
-    print("  python webcam_enhanced_service.py")
+    print("  python webcam_service.py")
     print()
     
     examples = [

@@ -8,8 +8,8 @@ Utility and debugging scripts for the Webcam Detection project.
 **Real-time monitoring tool for the detection service**
 
 ```bash
-# Start the main service first
-python webcam_enhanced_service.py
+# Start the webcam service in another terminal first
+python webcam_service.py
 
 # Then run the monitor in another terminal
 python scripts/monitor_detection_status.py
@@ -57,7 +57,7 @@ python scripts/visual_gesture_debug.py
 ### Basic Monitoring
 ```bash
 # Terminal 1: Start main service
-python webcam_enhanced_service.py
+python webcam_service.py
 
 # Terminal 2: Monitor status
 python scripts/monitor_detection_status.py
@@ -86,6 +86,6 @@ To change endpoints, modify the scripts directly or use command-line arguments w
 
 ## 🔗 Related
 
-- **[Main Service](../webcam_enhanced_service.py)** - Production service
+- **[Main Service](../webcam_service.py)** - Production service
 - **[Documentation](../docs/README.md)** - Complete documentation index
 - **[Examples](../docs/examples/)** - Code examples and patterns 

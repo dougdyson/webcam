@@ -270,7 +270,7 @@ def example_enhanced_service_integration():
         # In production, you might use systemd, Docker, or process manager
         subprocess.run([
             "conda", "activate", "webcam", "&&", 
-            "python", "webcam_enhanced_service.py"
+            "python", "webcam_service.py"
         ])
     
     # Start service in background

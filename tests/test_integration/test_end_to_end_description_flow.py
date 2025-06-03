@@ -14,7 +14,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from datetime import datetime, timedelta
 
 # Import the complete system components
-from webcam_enhanced_service import EnhancedWebcamService
+from webcam_service import WebcamService
 from src.utils.config import ConfigManager
 from src.ollama.client import OllamaClient
 from src.ollama.description_service import DescriptionService
@@ -55,15 +55,15 @@ class TestEndToEndHumanDetectionToDescriptionFlow:
         Flow: Frame → Human Detection (YES) → Description Processing → Event Publishing
         This test should fail because end-to-end integration is not implemented.
         """
-        with patch('webcam_enhanced_service.CameraManager') as mock_camera_class:
-            with patch('webcam_enhanced_service.create_detector') as mock_detector_class:
-                with patch('webcam_enhanced_service.GestureDetector') as mock_gesture_class:
-                    with patch('webcam_enhanced_service.ConfigManager') as mock_config_class:
-                        with patch('webcam_enhanced_service.OllamaClient') as mock_ollama_client_class:
-                            with patch('webcam_enhanced_service.DescriptionService') as mock_description_service_class:
+        with patch('webcam_service.CameraManager') as mock_camera_class:
+            with patch('webcam_service.create_detector') as mock_detector_class:
+                with patch('webcam_service.GestureDetector') as mock_gesture_class:
+                    with patch('webcam_service.ConfigManager') as mock_config_class:
+                        with patch('webcam_service.OllamaClient') as mock_ollama_client_class:
+                            with patch('webcam_service.DescriptionService') as mock_description_service_class:
                                 
                                 # Setup enhanced service
-                                enhanced_service = EnhancedWebcamService()
+                                enhanced_service = WebcamService()
                                 
                                 # Mock camera to return our test frame
                                 mock_camera = mock_camera_class.return_value
@@ -139,15 +139,15 @@ class TestEndToEndHumanDetectionToDescriptionFlow:
         Flow: Frame → Human Detection (NO) → Skip Description → No Events
         This test should fail because conditional processing logic is not implemented.
         """
-        with patch('webcam_enhanced_service.CameraManager') as mock_camera_class:
-            with patch('webcam_enhanced_service.create_detector') as mock_detector_class:
-                with patch('webcam_enhanced_service.GestureDetector') as mock_gesture_class:
-                    with patch('webcam_enhanced_service.ConfigManager') as mock_config_class:
-                        with patch('webcam_enhanced_service.OllamaClient') as mock_ollama_client_class:
-                            with patch('webcam_enhanced_service.DescriptionService') as mock_description_service_class:
+        with patch('webcam_service.CameraManager') as mock_camera_class:
+            with patch('webcam_service.create_detector') as mock_detector_class:
+                with patch('webcam_service.GestureDetector') as mock_gesture_class:
+                    with patch('webcam_service.ConfigManager') as mock_config_class:
+                        with patch('webcam_service.OllamaClient') as mock_ollama_client_class:
+                            with patch('webcam_service.DescriptionService') as mock_description_service_class:
                                 
                                 # Setup enhanced service
-                                enhanced_service = EnhancedWebcamService()
+                                enhanced_service = WebcamService()
                                 
                                 # Mock camera to return empty frame
                                 mock_camera = mock_camera_class.return_value
@@ -199,15 +199,15 @@ class TestEndToEndHumanDetectionToDescriptionFlow:
         Flow: Frame → Human Detection (YES, low confidence) → Skip Description
         This test should fail because confidence threshold logic is not implemented.
         """
-        with patch('webcam_enhanced_service.CameraManager') as mock_camera_class:
-            with patch('webcam_enhanced_service.create_detector') as mock_detector_class:
-                with patch('webcam_enhanced_service.GestureDetector') as mock_gesture_class:
-                    with patch('webcam_enhanced_service.ConfigManager') as mock_config_class:
-                        with patch('webcam_enhanced_service.OllamaClient') as mock_ollama_client_class:
-                            with patch('webcam_enhanced_service.DescriptionService') as mock_description_service_class:
+        with patch('webcam_service.CameraManager') as mock_camera_class:
+            with patch('webcam_service.create_detector') as mock_detector_class:
+                with patch('webcam_service.GestureDetector') as mock_gesture_class:
+                    with patch('webcam_service.ConfigManager') as mock_config_class:
+                        with patch('webcam_service.OllamaClient') as mock_ollama_client_class:
+                            with patch('webcam_service.DescriptionService') as mock_description_service_class:
                                 
                                 # Setup enhanced service
-                                enhanced_service = EnhancedWebcamService()
+                                enhanced_service = WebcamService()
                                 
                                 # Mock camera to return test frame
                                 mock_camera = mock_camera_class.return_value

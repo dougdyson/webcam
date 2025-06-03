@@ -135,7 +135,7 @@ config = EnhancedProcessorConfig(
 The enhanced service now runs with all optimizations enabled by default:
 
 ```bash
-conda activate webcam && python webcam_enhanced_service.py
+conda activate webcam && python webcam_service.py
 ```
 
 **Console output now shows optimized performance:**

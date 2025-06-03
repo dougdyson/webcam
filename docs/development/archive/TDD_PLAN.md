@@ -35,7 +35,7 @@ Following strict **Red → Green → Refactor** methodology:
 - **SSE Service**: Real-time gesture event streaming complete 🎉
 - **Production Integration**: All services coordinated and production-ready! 🎉 **NEW!**
 - **Clean Console Output**: Single updating status line (no scroll spam) ✅ **USER SATISFACTION ACHIEVED!**
-- **Live Service**: `webcam_enhanced_service.py` fully operational with clean output ✅
+- **Live Service**: `webcam_service.py` fully operational with clean output ✅
 - **"Stop" Gesture**: Semantic naming implemented with TDD approach ✅ **NEW!**
 
 ## Development Phases
@@ -95,7 +95,7 @@ Following strict **Red → Green → Refactor** methodology:
 
 **✅ Cycle 10.1: EnhancedWebcamService Integration**
 - ✅ Live camera detection integrated with HTTP API
-- ✅ Production-ready service: `webcam_enhanced_service.py`
+- ✅ Production-ready service: `webcam_service.py`
 - ✅ Real-time detection events updating HTTP responses
 - ✅ Performance validation: 50 requests/second sustained
 - ✅ 21 comprehensive integration tests
@@ -235,7 +235,7 @@ def should_process_audio() -> bool:
 - ✅ **COMPLETE**: 10 end-to-end gesture → SSE tests implemented and passing (**COMMITTED** 🎉)
 
 **✅ Cycle 16.3: Production Integration and Performance** *(100% COMPLETE - COMMITTED 🎉)*
-- ✅ Test integration with existing webcam_enhanced_service.py (**COMMITTED** 🎉)
+- ✅ Test integration with existing webcam_service.py (**COMMITTED** 🎉)
 - ✅ Test simultaneous HTTP API + SSE service operation (**COMMITTED** 🎉)
 - ✅ Test performance with both presence detection and gesture detection (**COMMITTED** 🎉)
 - ✅ Test error handling and graceful degradation (**COMMITTED** 🎉)
@@ -375,7 +375,7 @@ Detection Pipeline → EventPublisher → Service Layer
 - ✅ Performance targets met (50+ requests/second for guard clauses)
 - ✅ Error handling tested and validated (graceful fallbacks)
 - ✅ Documentation updated (ARCHITECTURE.md, README.md)
-- ✅ Production deployment ready (`webcam_enhanced_service.py`)
+- ✅ Production deployment ready (`webcam_service.py`)
 - ✅ Gesture event system complete (event types, debouncing, tracking)
 - ✅ SSE real-time streaming operational (gesture events to multiple clients) **NEW!**
 - ✅ Production integration complete (HTTP + SSE + Enhanced Processing coordinated) **NEW!**
@@ -383,7 +383,7 @@ Detection Pipeline → EventPublisher → Service Layer
 ## Current Production Status
 
 **🚀 FULLY PRODUCTION READY - GESTURE RECOGNITION COMPLETE + CLEAN CONSOLE!**
-- **Start Service**: `conda activate webcam && python webcam_enhanced_service.py`
+- **Start Service**: `conda activate webcam && python webcam_service.py`
 - **Test Presence**: `curl http://localhost:8767/presence/simple`
 - **Test Gesture SSE**: Connect to `http://localhost:8766/events/gestures/client_id`
 - **Speaker Verification**: Ready for guard clause integration
@@ -477,7 +477,7 @@ tests/ (374 tests total)
 
 ### 🔧 CURRENT ISSUE: Enhanced Service Bug Fix (Phase 17)
 
-**Issue**: `webcam_enhanced_service.py` has incorrect method call - `CameraManager` doesn't have `initialize()` method.
+**Issue**: `webcam_service.py` has incorrect method call - `CameraManager` doesn't have `initialize()` method.
 
 #### Phase 17.1: Enhanced Service Bug Fix (TDD Cycle)
 *Goal: Fix enhanced service CameraManager initialization following strict TDD*

@@ -159,7 +159,7 @@ class DetectionStatusMonitor:
         if not self.check_service_health():
             print(f"❌ Service not available at {self.api_url}")
             print("Make sure the enhanced service is running:")
-            print("    python webcam_enhanced_service.py")
+            print("    python webcam_service.py")
             sys.exit(1)
         
         print("✅ Service detected - starting real-time monitor...")

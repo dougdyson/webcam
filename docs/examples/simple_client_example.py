@@ -8,7 +8,7 @@ from another Python application. Copy this file into your project and modify as 
 
 Prerequisites:
     1. Start the webcam detection service:
-       python webcam_enhanced_service.py
+       python webcam_service.py
     
     2. Install dependencies:
        pip install requests sseclient-py
@@ -356,7 +356,7 @@ def main():
     print("=" * 50)
     print()
     print("Make sure the webcam detection service is running:")
-    print("  python webcam_enhanced_service.py")
+    print("  python webcam_service.py")
     print()
     
     examples = [

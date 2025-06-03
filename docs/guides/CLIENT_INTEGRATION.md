@@ -7,7 +7,7 @@ This guide shows how to integrate the webcam detection service into your Python 
 ### 1. Start the Service
 
 ```bash
-python webcam_enhanced_service.py
+python webcam_service.py
 ```
 
 The service provides two endpoints:

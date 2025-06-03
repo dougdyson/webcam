@@ -5,14 +5,14 @@ This file contains starter code and examples for configuration management
 including YAML loading, environment variables, validation, and config classes.
 
 Key Features:
-- Enhanced service configuration (webcam_enhanced_service.py)
+- Enhanced service configuration (webcam_service.py)
 - Gesture recognition settings
 - SSE service configuration  
 - Clean console output options
 - Production and development profiles
 
 Service Usage:
-    conda activate webcam && python webcam_enhanced_service.py
+    conda activate webcam && python webcam_service.py
 
 Console Output:
     🎥 Frame X | 👤 Human: YES/NO | 🖐️ Gesture: type | FPS: X (clean single line)

@@ -19,7 +19,7 @@ Quick reference for navigating the webcam-detection project.
 ```
 webcam/
 ├── 🏠 ROOT FILES (Clean & Organized) ✅ CLEANED UP!
-│   ├── webcam_enhanced_service.py     # 🚀 MAIN SERVICE (production ready + stop gesture recognition)
+│   ├── webcam_service.py     # 🚀 MAIN SERVICE (production ready + stop gesture recognition)
 │   ├── README.md                      # Project overview and quick start
 │   ├── ARCHITECTURE.md                # System architecture (comprehensive)
 │   ├── PROJECT_STRUCTURE.md           # This navigation guide
@@ -103,7 +103,7 @@ webcam/
 
 | **Goal** | **Go to** |
 |----------|-----------|
-| 🚀 **Run the service** | `conda activate webcam && python webcam_enhanced_service.py` |
+| 🚀 **Run the service** | `conda activate webcam && python webcam_service.py` |
 | 🧪 **Run tests** | `python -m pytest tests/` |
 | 📖 **Learn the API** | `docs/PACKAGE_USAGE.md` |
 | 🏃 **Quick examples** | `examples/package_usage_examples.py` |
@@ -114,7 +114,7 @@ webcam/
 
 ## 🔥 Most Important Files
 
-1. **`webcam_enhanced_service.py`** - Production service with gesture recognition (START HERE)
+1. **`webcam_service.py`** - Production service with gesture recognition (START HERE)
 2. **`README.md`** - Project overview and quick start
 3. **`docs/PACKAGE_USAGE.md`** - Complete documentation
 4. **`docs/CLIENT_INTEGRATION.md`** - Client integration guide
@@ -134,7 +134,7 @@ conda activate webcam
 python -m pytest tests/ -x
 
 # 3. Start the enhanced service (HTTP + Gesture + SSE)
-python webcam_enhanced_service.py
+python webcam_service.py
 
 # 4. Test the service
 curl http://localhost:8767/presence/simple
@@ -145,7 +145,7 @@ curl http://localhost:8766/events/gestures/test_client
 
 ## 🎯 Service Features
 
-### Enhanced Service (webcam_enhanced_service.py) ✅ RECOMMENDED
+### Enhanced Service (webcam_service.py) ✅ RECOMMENDED
 - ✅ **HTTP API** (port 8767): Human presence detection
 - ✅ **SSE Events** (port 8766): Real-time gesture streaming
 - ✅ **Gesture Recognition**: Stop gesture detection
@@ -165,4 +165,4 @@ curl http://localhost:8766/events/gestures/test_client
 
 ---
 
-💡 **Pro tip**: Start with `webcam_enhanced_service.py` for full features, then refer to `docs/` for advanced integration patterns.
+💡 **Pro tip**: Start with `webcam_service.py` for full features, then refer to `docs/` for advanced integration patterns.

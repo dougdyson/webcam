@@ -3,7 +3,7 @@
 External App Integration Client for Webcam Gesture Recognition
 
 This shows how to integrate gesture recognition into your external application.
-The webcam_enhanced_service.py must be running for this to work.
+The webcam_service.py must be running for this to work.
 
 Usage:
     python external_app_gesture_client.py

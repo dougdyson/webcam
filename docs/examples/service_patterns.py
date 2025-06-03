@@ -12,7 +12,7 @@ system as a service that other applications can consume. Patterns include:
 5. Enhanced Production Service (HTTP + Gesture Recognition + SSE)
 
 RECOMMENDED PRODUCTION SERVICE:
-Start with: conda activate webcam && python webcam_enhanced_service.py
+Start with: conda activate webcam && python webcam_service.py
 
 Features:
 - HTTP API (port 8767): Human presence detection with REST endpoints

@@ -248,7 +248,7 @@ webcam/
 
 1. **Install Dependencies**: `conda env create -f environment.yml`
 2. **Start Ollama**: `ollama serve` (optional, for AI descriptions)
-3. **Run Service**: `python webcam_enhanced_service.py`
+3. **Run Service**: `python webcam_service.py`
 4. **Monitor Status**: `python scripts/monitor_detection_status.py` (optional, in another terminal)
 5. **Test Integration**: `curl http://localhost:8767/presence/simple`
 

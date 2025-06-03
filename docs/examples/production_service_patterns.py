@@ -7,7 +7,7 @@ the webcam detection HTTP service. These patterns are battle-tested
 and reflect the actual production implementation.
 
 Key Features:
-- Production-ready webcam_enhanced_service.py integration (RECOMMENDED)
+- Production-ready webcam_service.py integration (RECOMMENDED)
 - Speaker verification guard clause patterns
 - Real-time presence monitoring + gesture recognition
 - Error handling and fail-safe patterns
@@ -18,7 +18,7 @@ Installation:
     pip install webcam-detection[service]
 
 Service Startup (RECOMMENDED):
-    conda activate webcam && python webcam_enhanced_service.py
+    conda activate webcam && python webcam_service.py
 
 Features:
 - HTTP API (port 8767): Human presence detection with REST endpoints
@@ -67,7 +67,7 @@ class WebcamDetectionService:
                     if self.use_enhanced_service:
                         # Enhanced service with gesture recognition + clean console
                         self.process = subprocess.Popen(
-                            ["conda", "activate", "webcam", "&&", "python", "webcam_enhanced_service.py"],
+                            ["conda", "activate", "webcam", "&&", "python", "webcam_service.py"],
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             shell=True
@@ -91,7 +91,7 @@ class WebcamDetectionService:
                 if self.use_enhanced_service:
                     self.process = subprocess.run([
                         "conda", "activate", "webcam", "&&", 
-                        "python", "webcam_enhanced_service.py"
+                        "python", "webcam_service.py"
                     ], shell=True)
                 else:
                     self.process = subprocess.run(["python", "webcam_http_service.py"])

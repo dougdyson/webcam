@@ -81,8 +81,8 @@ else:
 Start the complete service with HTTP API, gesture recognition, and optional AI descriptions:
 
 ```bash
-# Start the enhanced service
-python webcam_enhanced_service.py
+# Start the complete service
+python webcam_service.py
 ```
 
 ### Essential Endpoints

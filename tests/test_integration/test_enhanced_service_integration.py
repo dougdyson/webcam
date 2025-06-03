@@ -30,7 +30,7 @@ from datetime import datetime
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from webcam_enhanced_service import EnhancedWebcamService
+from webcam_service import WebcamService
 
 # Import required components
 from src.ollama.snapshot_buffer import Snapshot, SnapshotMetadata
@@ -44,7 +44,7 @@ class TestEnhancedServiceIntegration:
     @pytest.fixture
     def enhanced_service(self):
         """Create enhanced service instance for testing."""
-        return EnhancedWebcamService()
+        return WebcamService()
     
     def test_enhanced_service_initialization_with_correct_camera_api(self, enhanced_service):
         """
@@ -53,9 +53,9 @@ class TestEnhancedServiceIntegration:
         This test should fail because the current service calls camera.initialize()
         but CameraManager auto-initializes in constructor.
         """
-        with patch('webcam_enhanced_service.CameraManager') as mock_camera_class:
-            with patch('webcam_enhanced_service.create_detector') as mock_detector_factory:
-                with patch('webcam_enhanced_service.GestureDetector') as mock_gesture_class:
+        with patch('webcam_service.CameraManager') as mock_camera_class:
+            with patch('webcam_service.create_detector') as mock_detector_factory:
+                with patch('webcam_service.GestureDetector') as mock_gesture_class:
                     
                     # Setup mocks
                     mock_camera = Mock()
@@ -109,12 +109,12 @@ class TestEnhancedServiceIntegration:
         
         This test should fail because current service tries to call initialize() on components.
         """
-        with patch('webcam_enhanced_service.CameraManager') as mock_camera_class:
-            with patch('webcam_enhanced_service.create_detector') as mock_detector_factory:
-                with patch('webcam_enhanced_service.GestureDetector') as mock_gesture_class:
-                    with patch('webcam_enhanced_service.EnhancedFrameProcessor') as mock_processor_class:
-                        with patch('webcam_enhanced_service.HTTPDetectionService') as mock_http_class:
-                            with patch('webcam_enhanced_service.SSEDetectionService') as mock_sse_class:
+        with patch('webcam_service.CameraManager') as mock_camera_class:
+            with patch('webcam_service.create_detector') as mock_detector_factory:
+                with patch('webcam_service.GestureDetector') as mock_gesture_class:
+                    with patch('webcam_service.EnhancedFrameProcessor') as mock_processor_class:
+                        with patch('webcam_service.HTTPDetectionService') as mock_http_class:
+                            with patch('webcam_service.SSEDetectionService') as mock_sse_class:
                                 
                                 # Setup mocks - components should auto-initialize
                                 mock_camera = Mock()
@@ -146,7 +146,7 @@ class TestEnhancedServiceIntegration:
         
         Service should handle component initialization failures gracefully.
         """
-        with patch('webcam_enhanced_service.CameraManager') as mock_camera_class:
+        with patch('webcam_service.CameraManager') as mock_camera_class:
             # Simulate camera initialization failure
             mock_camera_class.side_effect = Exception("Camera not available")
             
@@ -164,10 +164,10 @@ class TestEnhancedServiceIntegration:
         
         All components should be properly integrated and working together.
         """
-        with patch('webcam_enhanced_service.CameraManager') as mock_camera_class:
-            with patch('webcam_enhanced_service.create_detector') as mock_detector_factory:
-                with patch('webcam_enhanced_service.GestureDetector') as mock_gesture_class:
-                    with patch('webcam_enhanced_service.EnhancedFrameProcessor') as mock_processor_class:
+        with patch('webcam_service.CameraManager') as mock_camera_class:
+            with patch('webcam_service.create_detector') as mock_detector_factory:
+                with patch('webcam_service.GestureDetector') as mock_gesture_class:
+                    with patch('webcam_service.EnhancedFrameProcessor') as mock_processor_class:
                         
                         # Setup successful mocks
                         mock_camera = Mock()
@@ -204,12 +204,12 @@ class TestEnhancedServiceIntegration:
         
         Both HTTP and SSE services should start correctly.
         """
-        with patch('webcam_enhanced_service.CameraManager'):
-            with patch('webcam_enhanced_service.create_detector'):
-                with patch('webcam_enhanced_service.GestureDetector'):
-                    with patch('webcam_enhanced_service.EnhancedFrameProcessor'):
-                        with patch('webcam_enhanced_service.HTTPDetectionService') as mock_http_class:
-                            with patch('webcam_enhanced_service.SSEDetectionService') as mock_sse_class:
+        with patch('webcam_service.CameraManager'):
+            with patch('webcam_service.create_detector'):
+                with patch('webcam_service.GestureDetector'):
+                    with patch('webcam_service.EnhancedFrameProcessor'):
+                        with patch('webcam_service.HTTPDetectionService') as mock_http_class:
+                            with patch('webcam_service.SSEDetectionService') as mock_sse_class:
                                 
                                 mock_http = Mock()
                                 mock_http_class.return_value = mock_http
@@ -234,12 +234,12 @@ class TestEnhancedServiceIntegration:
         
         Detection loop should process frames and update services.
         """
-        with patch('webcam_enhanced_service.CameraManager') as mock_camera_class:
-            with patch('webcam_enhanced_service.create_detector'):
-                with patch('webcam_enhanced_service.GestureDetector'):
-                    with patch('webcam_enhanced_service.EnhancedFrameProcessor') as mock_processor_class:
-                        with patch('webcam_enhanced_service.HTTPDetectionService') as mock_http_class:
-                            with patch('webcam_enhanced_service.SSEDetectionService'):
+        with patch('webcam_service.CameraManager') as mock_camera_class:
+            with patch('webcam_service.create_detector'):
+                with patch('webcam_service.GestureDetector'):
+                    with patch('webcam_service.EnhancedFrameProcessor') as mock_processor_class:
+                        with patch('webcam_service.HTTPDetectionService') as mock_http_class:
+                            with patch('webcam_service.SSEDetectionService'):
                                 
                                 # Setup mocks
                                 mock_camera = Mock()
@@ -291,8 +291,8 @@ class TestDescriptionServiceIntegration:
     @pytest.fixture
     def enhanced_service(self):
         """Create enhanced service instance for testing."""
-        from webcam_enhanced_service import EnhancedWebcamService
-        return EnhancedWebcamService()
+        from webcam_service import WebcamService
+        return WebcamService()
     
     @pytest.fixture
     def mock_config_manager(self):
@@ -330,12 +330,12 @@ class TestDescriptionServiceIntegration:
         
         This test should fail because the current service doesn't have DescriptionService integration.
         """
-        with patch('webcam_enhanced_service.CameraManager'):
-            with patch('webcam_enhanced_service.create_detector'):
-                with patch('webcam_enhanced_service.GestureDetector'):
-                    with patch('webcam_enhanced_service.ConfigManager', return_value=mock_config_manager):
-                        with patch('webcam_enhanced_service.DescriptionService') as mock_desc_service_class:
-                            with patch('webcam_enhanced_service.OllamaClient') as mock_client_class:
+        with patch('webcam_service.CameraManager'):
+            with patch('webcam_service.create_detector'):
+                with patch('webcam_service.GestureDetector'):
+                    with patch('webcam_service.ConfigManager', return_value=mock_config_manager):
+                        with patch('webcam_service.DescriptionService') as mock_desc_service_class:
+                            with patch('webcam_service.OllamaClient') as mock_client_class:
                                 
                                 # Setup mocks
                                 mock_description_service = Mock()
@@ -366,12 +366,12 @@ class TestDescriptionServiceIntegration:
         
         This test should fail because OllamaClient is not currently integrated.
         """
-        with patch('webcam_enhanced_service.CameraManager'):
-            with patch('webcam_enhanced_service.create_detector'):
-                with patch('webcam_enhanced_service.GestureDetector'):
-                    with patch('webcam_enhanced_service.ConfigManager', return_value=mock_config_manager):
-                        with patch('webcam_enhanced_service.OllamaClient') as mock_client_class:
-                            with patch('webcam_enhanced_service.DescriptionService'):
+        with patch('webcam_service.CameraManager'):
+            with patch('webcam_service.create_detector'):
+                with patch('webcam_service.GestureDetector'):
+                    with patch('webcam_service.ConfigManager', return_value=mock_config_manager):
+                        with patch('webcam_service.OllamaClient') as mock_client_class:
+                            with patch('webcam_service.DescriptionService'):
                                 
                                 mock_client = Mock()
                                 mock_client_class.return_value = mock_client
@@ -400,12 +400,12 @@ class TestDescriptionServiceIntegration:
         
         This test should fail because ConfigManager integration is not implemented.
         """
-        with patch('webcam_enhanced_service.CameraManager'):
-            with patch('webcam_enhanced_service.create_detector'):
-                with patch('webcam_enhanced_service.GestureDetector'):
-                    with patch('webcam_enhanced_service.ConfigManager', return_value=mock_config_manager) as mock_config_class:
-                        with patch('webcam_enhanced_service.OllamaClient'):
-                            with patch('webcam_enhanced_service.DescriptionService'):
+        with patch('webcam_service.CameraManager'):
+            with patch('webcam_service.create_detector'):
+                with patch('webcam_service.GestureDetector'):
+                    with patch('webcam_service.ConfigManager', return_value=mock_config_manager) as mock_config_class:
+                        with patch('webcam_service.OllamaClient'):
+                            with patch('webcam_service.DescriptionService'):
                                 
                                 # Initialize service
                                 enhanced_service.initialize()
@@ -426,8 +426,8 @@ class TestEnhancedServiceStartupShutdownOrder:
     @pytest.fixture
     def enhanced_service(self):
         """Create enhanced service instance for testing."""
-        from webcam_enhanced_service import EnhancedWebcamService
-        return EnhancedWebcamService()
+        from webcam_service import WebcamService
+        return WebcamService()
     
     def test_enhanced_service_initializes_components_in_correct_order(self, enhanced_service):
         """
@@ -463,14 +463,14 @@ class TestEnhancedServiceStartupShutdownOrder:
             initialization_order.append('description')
             return Mock()
         
-        with patch('webcam_enhanced_service.CameraManager', side_effect=track_camera_init):
-            with patch('webcam_enhanced_service.create_detector', side_effect=track_detector_init):
-                with patch('webcam_enhanced_service.GestureDetector', side_effect=track_gesture_init):
-                    with patch('webcam_enhanced_service.ConfigManager', side_effect=track_config_init):
-                        with patch('webcam_enhanced_service.OllamaClient', side_effect=track_ollama_init):
-                            with patch('webcam_enhanced_service.DescriptionService', side_effect=track_description_init):
-                                with patch('webcam_enhanced_service.HTTPDetectionService'):
-                                    with patch('webcam_enhanced_service.SSEDetectionService'):
+        with patch('webcam_service.CameraManager', side_effect=track_camera_init):
+            with patch('webcam_service.create_detector', side_effect=track_detector_init):
+                with patch('webcam_service.GestureDetector', side_effect=track_gesture_init):
+                    with patch('webcam_service.ConfigManager', side_effect=track_config_init):
+                        with patch('webcam_service.OllamaClient', side_effect=track_ollama_init):
+                            with patch('webcam_service.DescriptionService', side_effect=track_description_init):
+                                with patch('webcam_service.HTTPDetectionService'):
+                                    with patch('webcam_service.SSEDetectionService'):
                                         
                                         # Initialize service
                                         enhanced_service.initialize()
@@ -528,14 +528,14 @@ class TestEnhancedServiceStartupShutdownOrder:
         
         This test should fail because error handling for description service is not implemented.
         """
-        with patch('webcam_enhanced_service.CameraManager'):
-            with patch('webcam_enhanced_service.create_detector'):
-                with patch('webcam_enhanced_service.GestureDetector'):
-                    with patch('webcam_enhanced_service.ConfigManager'):
-                        with patch('webcam_enhanced_service.OllamaClient'):
-                            with patch('webcam_enhanced_service.DescriptionService', side_effect=Exception("Ollama not available")):
-                                with patch('webcam_enhanced_service.HTTPDetectionService'):
-                                    with patch('webcam_enhanced_service.SSEDetectionService'):
+        with patch('webcam_service.CameraManager'):
+            with patch('webcam_service.create_detector'):
+                with patch('webcam_service.GestureDetector'):
+                    with patch('webcam_service.ConfigManager'):
+                        with patch('webcam_service.OllamaClient'):
+                            with patch('webcam_service.DescriptionService', side_effect=Exception("Ollama not available")):
+                                with patch('webcam_service.HTTPDetectionService'):
+                                    with patch('webcam_service.SSEDetectionService'):
                                         
                                         # Should handle description service failure gracefully
                                         try:
@@ -565,8 +565,8 @@ class TestEnhancedServiceComponentCommunication:
     @pytest.fixture
     def enhanced_service(self):
         """Create enhanced service instance for testing."""
-        from webcam_enhanced_service import EnhancedWebcamService
-        return EnhancedWebcamService()
+        from webcam_service import WebcamService
+        return WebcamService()
     
     def test_enhanced_service_integrates_description_service_with_event_publisher(self, enhanced_service):
         """
@@ -574,14 +574,14 @@ class TestEnhancedServiceComponentCommunication:
         
         This test should fail because description event integration is not implemented.
         """
-        with patch('webcam_enhanced_service.CameraManager'):
-            with patch('webcam_enhanced_service.create_detector'):
-                with patch('webcam_enhanced_service.GestureDetector'):
-                    with patch('webcam_enhanced_service.ConfigManager') as mock_config_class:
-                        with patch('webcam_enhanced_service.OllamaClient'):
-                            with patch('webcam_enhanced_service.DescriptionService') as mock_desc_class:
-                                with patch('webcam_enhanced_service.HTTPDetectionService'):
-                                    with patch('webcam_enhanced_service.SSEDetectionService'):
+        with patch('webcam_service.CameraManager'):
+            with patch('webcam_service.create_detector'):
+                with patch('webcam_service.GestureDetector'):
+                    with patch('webcam_service.ConfigManager') as mock_config_class:
+                        with patch('webcam_service.OllamaClient'):
+                            with patch('webcam_service.DescriptionService') as mock_desc_class:
+                                with patch('webcam_service.HTTPDetectionService'):
+                                    with patch('webcam_service.SSEDetectionService'):
                                         
                                         # Setup proper mock configuration to avoid comparison errors
                                         mock_config_manager = Mock()
@@ -625,15 +625,15 @@ class TestEnhancedServiceComponentCommunication:
         Simplified to test component availability rather than complex detection loop mocking.
         """
         # Initialize the service to set up all components
-        with patch('webcam_enhanced_service.CameraManager'):
-            with patch('webcam_enhanced_service.create_detector'):
-                with patch('webcam_enhanced_service.GestureDetector'):
-                    with patch('webcam_enhanced_service.ConfigManager'):
-                        with patch('webcam_enhanced_service.OllamaClient'):
-                            with patch('webcam_enhanced_service.DescriptionService') as mock_desc_service:
-                                with patch('webcam_enhanced_service.HTTPDetectionService'):
-                                    with patch('webcam_enhanced_service.SSEDetectionService'):
-                                        with patch('webcam_enhanced_service.OllamaImageProcessor'):
+        with patch('webcam_service.CameraManager'):
+            with patch('webcam_service.create_detector'):
+                with patch('webcam_service.GestureDetector'):
+                    with patch('webcam_service.ConfigManager'):
+                        with patch('webcam_service.OllamaClient'):
+                            with patch('webcam_service.DescriptionService') as mock_desc_service:
+                                with patch('webcam_service.HTTPDetectionService'):
+                                    with patch('webcam_service.SSEDetectionService'):
+                                        with patch('webcam_service.OllamaImageProcessor'):
                                             
                                             # Initialize the service
                                             enhanced_service.initialize()
@@ -664,14 +664,14 @@ class TestEnhancedServiceComponentCommunication:
         
         This test should fail because description event flow to HTTP service is not implemented.
         """
-        with patch('webcam_enhanced_service.CameraManager'):
-            with patch('webcam_enhanced_service.create_detector'):
-                with patch('webcam_enhanced_service.GestureDetector'):
-                    with patch('webcam_enhanced_service.ConfigManager'):
-                        with patch('webcam_enhanced_service.OllamaClient'):
-                            with patch('webcam_enhanced_service.DescriptionService'):
-                                with patch('webcam_enhanced_service.HTTPDetectionService') as mock_http_class:
-                                    with patch('webcam_enhanced_service.SSEDetectionService'):
+        with patch('webcam_service.CameraManager'):
+            with patch('webcam_service.create_detector'):
+                with patch('webcam_service.GestureDetector'):
+                    with patch('webcam_service.ConfigManager'):
+                        with patch('webcam_service.OllamaClient'):
+                            with patch('webcam_service.DescriptionService'):
+                                with patch('webcam_service.HTTPDetectionService') as mock_http_class:
+                                    with patch('webcam_service.SSEDetectionService'):
                                         
                                         mock_http_service = Mock()
                                         
@@ -701,7 +701,7 @@ class TestEnhancedServiceComponentCommunication:
     def test_snapshot_creation_and_processing(self):
         """Test that snapshots are created properly and description service is called correctly."""
         # Create service instance
-        service = EnhancedWebcamService()
+        service = WebcamService()
         
         # Mock the dependencies
         service.ollama_client = Mock()
@@ -860,7 +860,7 @@ class TestEnhancedServiceComponentCommunication:
     def test_detection_loop_snapshot_creation(self):
         """Test that the detection loop creates snapshots correctly."""
         # Create service
-        service = EnhancedWebcamService()
+        service = WebcamService()
         
         # Mock dependencies  
         service.description_service = Mock()

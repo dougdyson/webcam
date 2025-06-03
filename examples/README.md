@@ -8,7 +8,7 @@ Quick-start examples for getting up and running with webcam-detection package.
 
 1. **Start the enhanced service (HTTP + Gesture Recognition + SSE):**
    ```bash
-   conda activate webcam && python webcam_enhanced_service.py
+   conda activate webcam && python webcam_service.py
    ```
    
    **Clean Console Output:** Single updating status line (no scroll spam):
@@ -159,6 +159,6 @@ python examples/package_usage_examples.py
 ## 💡 Next Steps
 
 1. **Quick prototype**: Start with examples here
-2. **Production deployment**: Use main `webcam_enhanced_service.py` in root
+2. **Production deployment**: Use main `webcam_service.py` in root
 3. **Advanced patterns**: See `docs/service_patterns.py`
 4. **API reference**: Check `docs/PACKAGE_USAGE.md` 

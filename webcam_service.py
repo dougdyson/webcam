@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Enhanced Webcam Detection Service with Gesture Recognition
+Webcam Detection Service with Gesture Recognition
 
 This service provides:
 1. Real-time human presence detection via HTTP API (port 8767)
@@ -8,7 +8,7 @@ This service provides:
 3. Gesture detection ONLY when humans are detected (performance optimized)
 
 Usage:
-    python webcam_enhanced_service.py
+    python webcam_service.py
 
 HTTP Endpoints (port 8767):
     GET /presence/simple  - Boolean presence check
@@ -56,9 +56,9 @@ from src.ollama.snapshot_buffer import Snapshot, SnapshotMetadata
 logging.basicConfig(level=logging.WARNING, format='%(message)s')  # Only warnings and errors
 logger = logging.getLogger(__name__)
 
-class EnhancedWebcamService:
+class WebcamService:
     """
-    Enhanced Webcam Detection Service with Gesture Recognition
+    Webcam Detection Service with Gesture Recognition
     
     Provides both human presence detection AND gesture recognition:
     - HTTP API on port 8767 for presence detection
@@ -533,11 +533,11 @@ class EnhancedWebcamService:
 
 def main():
     """Main entry point."""
-    service = EnhancedWebcamService()
+    service = WebcamService()
     service.setup_signal_handlers()
     
-    print("🎯 Enhanced Webcam Detection Service with Gesture Recognition")
-    print("=" * 65)
+    print("🎯 Webcam Detection Service with Gesture Recognition")
+    print("=" * 58)
     print("HTTP API: http://localhost:8767 (presence detection)")
     print("SSE Stream: http://localhost:8766 (gesture events)")
     print("Press Ctrl+C to stop")

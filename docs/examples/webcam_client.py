@@ -257,7 +257,7 @@ def example_basic_usage():
     
     # Check service health
     if not client.is_service_healthy():
-        print("❌ Service not available. Start with: python webcam_enhanced_service.py")
+        print("❌ Service not available. Start with: python webcam_service.py")
         return
     
     print("✅ Service is healthy")
@@ -337,7 +337,7 @@ if __name__ == "__main__":
     print("=" * 40)
     print()
     print("Make sure the service is running:")
-    print("  python webcam_enhanced_service.py")
+    print("  python webcam_service.py")
     print()
     
     # Run examples

@@ -203,7 +203,7 @@ pip install webcam-detection[service]
 # Start the enhanced service (production recommended)
 import subprocess
 service_process = subprocess.Popen([
-    "python", "webcam_enhanced_service.py"
+    "python", "webcam_service.py"
 ], cwd="/path/to/webcam")
 
 # HTTP API guard clause
