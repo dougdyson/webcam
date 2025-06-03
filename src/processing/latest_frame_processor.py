@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from collections import deque
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
+import yaml
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +100,15 @@ class LatestFrameProcessor:
         
         # Callbacks for results
         self._result_callbacks: List[Callable] = []
+        
+        # NEW Phase 3.1: Event publishing callbacks
+        self._event_callbacks: List[Callable] = []
+        self._event_publisher = None
+        
+        # NEW Phase 3.1: Snapshot callbacks for AI descriptions
+        self._snapshot_callbacks: List[Callable] = []
+        self._snapshot_enabled = False
+        self._snapshot_min_confidence = 0.8
         
         # Thread pool for sync detectors
         self._thread_pool = ThreadPoolExecutor(max_workers=1)
@@ -323,7 +334,8 @@ class LatestFrameProcessor:
             # Update statistics using new methods (NEW for Phase 2.1)
             self._update_processing_time_stats(processing_time)
             
-            return LatestFrameResult(
+            # Create result
+            result = LatestFrameResult(
                 frame_id=current_frame_id,
                 human_present=detection_result.human_present,
                 confidence=detection_result.confidence,
@@ -333,6 +345,16 @@ class LatestFrameProcessor:
                 frames_skipped=frames_skipped,
                 error_occurred=False
             )
+            
+            # NEW Phase 3.1: Trigger snapshot for AI descriptions if enabled
+            if (self._snapshot_enabled and detection_result.human_present and 
+                detection_result.confidence >= self._snapshot_min_confidence):
+                await self._trigger_snapshot(frame, result)
+            
+            # NEW Phase 3.1: Publish events if configured
+            await self._publish_frame_event(result)
+            
+            return result
             
         except Exception as e:
             processing_time = time.time() - process_start_time
@@ -945,6 +967,197 @@ class LatestFrameProcessor:
                     logger.error(f"Error in FPS adjustment callback: {e}")
             
             logger.info(f"Adaptive FPS adjustment: {old_fps:.1f} → {new_fps:.1f} FPS ({reason})")
+
+    # NEW Phase 3.1: Event publishing methods
+    def add_event_callback(self, callback: Callable[[Dict[str, Any]], None]):
+        """Add callback for structured event publishing."""
+        self._event_callbacks.append(callback)
+    
+    def remove_event_callback(self, callback: Callable[[Dict[str, Any]], None]):
+        """Remove event publishing callback."""
+        if callback in self._event_callbacks:
+            self._event_callbacks.remove(callback)
+    
+    def set_event_publisher(self, event_publisher):
+        """Set EventPublisher for service integration."""
+        self._event_publisher = event_publisher
+    
+    # NEW Phase 3.1: Snapshot methods for AI descriptions
+    def add_snapshot_callback(self, callback: Callable[[np.ndarray, Dict[str, Any]], None]):
+        """Add callback for snapshot triggering."""
+        self._snapshot_callbacks.append(callback)
+    
+    def remove_snapshot_callback(self, callback: Callable[[np.ndarray, Dict[str, Any]], None]):
+        """Remove snapshot callback."""
+        if callback in self._snapshot_callbacks:
+            self._snapshot_callbacks.remove(callback)
+    
+    def enable_snapshot_triggering(self, min_confidence: float = 0.8):
+        """Enable snapshot triggering for high-confidence detections."""
+        self._snapshot_enabled = True
+        self._snapshot_min_confidence = min_confidence
+    
+    def disable_snapshot_triggering(self):
+        """Disable snapshot triggering."""
+        self._snapshot_enabled = False
+    
+    # NEW Phase 3.1: Configuration management
+    def update_configuration(self, config: Dict[str, Any]) -> bool:
+        """Update processor configuration at runtime."""
+        try:
+            # Validate configuration first
+            if 'target_fps' in config:
+                if config['target_fps'] <= 0:
+                    raise ValueError("target_fps must be positive")
+                self.target_fps = config['target_fps']
+                self.processing_interval = 1.0 / self.target_fps
+            
+            if 'processing_timeout' in config:
+                if config['processing_timeout'] <= 0:
+                    raise ValueError("processing_timeout must be positive")
+                self.processing_timeout = config['processing_timeout']
+            
+            if 'max_frame_age' in config:
+                if config['max_frame_age'] <= 0:
+                    raise ValueError("max_frame_age must be positive")
+                self.max_frame_age = config['max_frame_age']
+            
+            if 'adaptive_fps' in config:
+                self.adaptive_fps = bool(config['adaptive_fps'])
+            
+            if 'memory_monitoring' in config:
+                self.memory_monitoring = bool(config['memory_monitoring'])
+                if self.memory_monitoring and not hasattr(self, '_process'):
+                    import psutil
+                    self._process = psutil.Process()
+                    self._peak_memory_mb = 0.0
+                    self._memory_samples = []
+            
+            logger.info(f"Configuration updated successfully: {config}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Configuration update failed: {e}")
+            return False
+
+    async def _trigger_snapshot(self, frame: np.ndarray, result: LatestFrameResult):
+        """Trigger snapshot callbacks for AI description processing."""
+        if not self._snapshot_callbacks:
+            return
+        
+        snapshot_metadata = {
+            'frame_id': result.frame_id,
+            'confidence': result.confidence,
+            'human_present': result.human_present,
+            'timestamp': result.timestamp,
+            'processing_time': result.processing_time
+        }
+        
+        for callback in self._snapshot_callbacks:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(frame.copy(), snapshot_metadata)
+                else:
+                    callback(frame.copy(), snapshot_metadata)
+            except Exception as e:
+                logger.error(f"Error in snapshot callback: {e}")
+    
+    async def _publish_frame_event(self, result: LatestFrameResult):
+        """Publish frame processing events."""
+        # Structured event for event callbacks
+        event_data = {
+            'type': 'frame_processed',
+            'data': {
+                'frame_id': result.frame_id,
+                'human_present': result.human_present,
+                'confidence': result.confidence,
+                'processing_time': result.processing_time,
+                'timestamp': result.timestamp,
+                'frame_age': result.frame_age,
+                'error_occurred': result.error_occurred
+            }
+        }
+        
+        # Notify event callbacks
+        for callback in self._event_callbacks:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(event_data)
+                else:
+                    callback(event_data)
+            except Exception as e:
+                logger.error(f"Error in event callback: {e}")
+        
+        # Integrate with service EventPublisher if available
+        if self._event_publisher:
+            try:
+                from src.service.events import ServiceEvent, EventType
+                from datetime import datetime
+                
+                # Use existing event type - DETECTION_UPDATE is appropriate for frame processing results
+                event_type = EventType.DETECTION_UPDATE
+                
+                service_event = ServiceEvent(
+                    event_type=event_type,
+                    data={
+                        'frame_id': result.frame_id,
+                        'human_present': result.human_present,
+                        'confidence': result.confidence,
+                        'processing_time': result.processing_time,
+                        'frame_age': result.frame_age
+                    },
+                    timestamp=datetime.fromtimestamp(result.timestamp)
+                )
+                
+                # Publish both sync and async
+                self._event_publisher.publish(service_event)
+                
+                # Only publish async if event publisher supports it
+                if hasattr(self._event_publisher, 'publish_async'):
+                    await self._event_publisher.publish_async(service_event)
+                
+            except Exception as e:
+                logger.error(f"Error publishing to EventPublisher: {e}")
+
+
+# NEW Phase 3.1: Configuration loading functions
+def load_processor_config(config_file: str) -> Dict[str, Any]:
+    """Load LatestFrameProcessor configuration from YAML file."""
+    try:
+        with open(config_file, 'r') as f:
+            config_data = yaml.safe_load(f)
+        
+        if 'frame_processing' in config_data:
+            return config_data['frame_processing']
+        else:
+            return config_data
+            
+    except Exception as e:
+        logger.error(f"Failed to load processor config from {config_file}: {e}")
+        raise
+
+
+def create_processor_from_legacy_config(camera_manager, detector, config: Dict[str, Any]) -> LatestFrameProcessor:
+    """Create LatestFrameProcessor from legacy configuration format."""
+    # Convert legacy config keys to new format
+    converted_config = {}
+    
+    if 'frame_rate' in config:
+        converted_config['target_fps'] = float(config['frame_rate'])
+    if 'timeout' in config:
+        converted_config['processing_timeout'] = float(config['timeout'])
+    if 'max_age' in config:
+        converted_config['max_frame_age'] = float(config['max_age'])
+    
+    # Set defaults for new parameters
+    converted_config.setdefault('adaptive_fps', False)
+    converted_config.setdefault('memory_monitoring', False)
+    
+    return LatestFrameProcessor(
+        camera_manager=camera_manager,
+        detector=detector,
+        **converted_config
+    )
 
 
 # Convenience function for quick setup

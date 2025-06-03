@@ -30,7 +30,7 @@ import threading
 import signal
 import sys
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime
 
 # Core detection system
@@ -39,6 +39,14 @@ from src.detection.gesture_detector import GestureDetector
 from src.camera import CameraManager
 from src.camera.config import CameraConfig
 from src.processing.enhanced_frame_processor import EnhancedFrameProcessor, EnhancedProcessorConfig
+
+# NEW Phase 3.1: Latest Frame Processor integration
+from src.processing.latest_frame_processor import (
+    LatestFrameProcessor, 
+    create_latest_frame_processor,
+    load_processor_config,
+    create_processor_from_legacy_config
+)
 
 # Service layer
 from src.service.http_service import HTTPDetectionService, HTTPServiceConfig
@@ -74,6 +82,11 @@ class WebcamService:
         self.frame_processor = None
         self.event_publisher = EventPublisher()
         
+        # NEW Phase 3.1: Latest frame processor support
+        self._latest_frame_processor = None
+        self._processor_mode = 'traditional'  # 'traditional' or 'latest_frame'
+        self._processor_config = {}
+        
         # Services
         self.http_service = None
         self.sse_service = None
@@ -90,6 +103,134 @@ class WebcamService:
         self._shutdown_requested = False
         self._description_service_failed = False
         
+    # NEW Phase 3.1: Processor management methods
+    def set_processor(self, processor):
+        """Set custom processor for the service."""
+        if isinstance(processor, LatestFrameProcessor):
+            self._latest_frame_processor = processor
+            self._processor_mode = 'latest_frame'
+            
+            # Integrate with event publisher
+            processor.set_event_publisher(self.event_publisher)
+            
+            logger.info("Latest frame processor set successfully")
+        else:
+            # Traditional processor
+            self.frame_processor = processor
+            self._processor_mode = 'traditional'
+            logger.info("Traditional processor set successfully")
+    
+    def get_processor(self):
+        """Get current processor."""
+        if self._processor_mode == 'latest_frame':
+            return self._latest_frame_processor
+        else:
+            return self.frame_processor
+    
+    def initialize_with_config(self, config: Dict[str, Any]):
+        """Initialize service with configuration including processor settings."""
+        # Store processor configuration
+        if 'frame_processing' in config:
+            processor_config = config['frame_processing']
+            self._processor_config = processor_config
+            
+            if processor_config.get('mode') == 'latest_frame':
+                self._processor_mode = 'latest_frame'
+        
+        # Initialize normally
+        self.initialize()
+        
+        # Apply processor configuration
+        if self._processor_mode == 'latest_frame' and self._latest_frame_processor:
+            # Update processor with configuration
+            config_without_mode = dict(self._processor_config)
+            config_without_mode.pop('mode', None)
+            self._latest_frame_processor.update_configuration(config_without_mode)
+    
+    def switch_processor(self, new_processor, graceful: bool = True) -> bool:
+        """Switch processor without stopping service (hot-swap)."""
+        try:
+            old_processor = self.get_processor()
+            
+            if graceful and old_processor and hasattr(old_processor, 'is_running') and old_processor.is_running:
+                # Gracefully stop old processor
+                if asyncio.iscoroutinefunction(old_processor.stop):
+                    # Handle async stop
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.create_task(old_processor.stop())
+                    else:
+                        asyncio.run(old_processor.stop())
+                elif hasattr(old_processor, 'stop'):
+                    old_processor.stop()
+            
+            # Set new processor
+            self.set_processor(new_processor)
+            
+            # Start new processor if service is running
+            if self.is_running and hasattr(new_processor, 'start'):
+                if asyncio.iscoroutinefunction(new_processor.start):
+                    # Handle async start
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.create_task(new_processor.start())
+                    else:
+                        asyncio.run(new_processor.start())
+                else:
+                    new_processor.start()
+            
+            logger.info(f"Processor switched successfully: {type(new_processor).__name__}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Processor switch failed: {e}")
+            return False
+    
+    def validate_processor_config(self, config: Dict[str, Any]) -> bool:
+        """Validate processor configuration."""
+        try:
+            if 'target_fps' in config and config['target_fps'] <= 0:
+                raise ValueError("target_fps must be positive")
+            if 'processing_timeout' in config and config['processing_timeout'] <= 0:
+                raise ValueError("processing_timeout must be positive")
+            if 'max_frame_age' in config and config['max_frame_age'] <= 0:
+                raise ValueError("max_frame_age must be positive")
+            
+            return True
+            
+        except ValueError:
+            raise  # Re-raise validation errors
+        except Exception as e:
+            logger.error(f"Config validation error: {e}")
+            return False
+    
+    def configure_processor(self, config: Dict[str, Any]):
+        """Configure processor settings."""
+        # Validate configuration
+        self.validate_processor_config(config)
+        
+        # Store configuration
+        self._processor_config = config
+        
+        # Set processor mode
+        if config.get('mode') == 'latest_frame':
+            self._processor_mode = 'latest_frame'
+        else:
+            self._processor_mode = 'traditional'
+    
+    async def start_detection_only(self):
+        """Start detection only (for testing)."""
+        self.is_running = True
+        
+        # Start processor based on mode
+        if self._processor_mode == 'latest_frame' and self._latest_frame_processor:
+            await self._latest_frame_processor.start()
+        elif self.frame_processor and hasattr(self.frame_processor, 'start'):
+            if asyncio.iscoroutinefunction(self.frame_processor.start):
+                await self.frame_processor.start()
+            else:
+                self.frame_processor.start()
+
     def initialize(self):
         """Initialize all components with proper error handling."""
         try:
@@ -106,8 +247,64 @@ class WebcamService:
             self.detector.initialize()
             
             # Step 4: Initialize gesture detector
+            logger.info("🖐️ Initializing gesture detector...")
             self.gesture_detector = GestureDetector()
-            self.gesture_detector.initialize()
+            
+            # NEW Phase 3.1: Initialize latest frame processor if configured
+            if self._processor_mode == 'latest_frame':
+                logger.info("⚡ Initializing latest frame processor...")
+                
+                # Extract processor config without mode
+                processor_config = dict(self._processor_config)
+                processor_config.pop('mode', None)
+                
+                # Set defaults if no config provided
+                if not processor_config:
+                    processor_config = {
+                        'target_fps': 5.0,
+                        'real_time_mode': True,
+                        'adaptive_fps': True
+                    }
+                
+                # Use create_latest_frame_processor for real_time_mode support
+                if 'real_time_mode' in processor_config:
+                    real_time_mode = processor_config.pop('real_time_mode')
+                    
+                    # Filter parameters for create_latest_frame_processor
+                    create_params = {}
+                    direct_params = {}
+                    
+                    # Parameters for create_latest_frame_processor
+                    create_param_names = ['target_fps', 'processing_timeout', 'max_frame_age']
+                    
+                    for key, value in processor_config.items():
+                        if key in create_param_names:
+                            create_params[key] = value
+                        else:
+                            direct_params[key] = value
+                    
+                    self._latest_frame_processor = create_latest_frame_processor(
+                        camera_manager=self.camera,
+                        detector=self.detector,
+                        real_time_mode=real_time_mode,
+                        **create_params
+                    )
+                    
+                    # Apply remaining parameters directly
+                    if direct_params:
+                        self._latest_frame_processor.update_configuration(direct_params)
+                        
+                else:
+                    self._latest_frame_processor = LatestFrameProcessor(
+                        camera_manager=self.camera,
+                        detector=self.detector,
+                        **processor_config
+                    )
+                
+                # Integrate with event publisher
+                self._latest_frame_processor.set_event_publisher(self.event_publisher)
+                
+                logger.info("✅ Latest frame processor initialized successfully")
             
             # Step 5: Initialize Ollama components
             try:
@@ -422,6 +619,15 @@ class WebcamService:
         self._shutdown_requested = True
         self.is_running = False
         
+        # NEW Phase 3.1: Cleanup latest frame processor
+        if self._latest_frame_processor and hasattr(self._latest_frame_processor, 'is_running'):
+            try:
+                if self._latest_frame_processor.is_running:
+                    await self._latest_frame_processor.stop()
+                logger.info("✅ Latest frame processor stopped")
+            except Exception as e:
+                logger.error(f"Error stopping latest frame processor: {e}")
+        
         # Cleanup Ollama components
         if self.description_service and hasattr(self.description_service, 'cleanup'):
             self.description_service.cleanup()
@@ -445,6 +651,7 @@ class WebcamService:
         self.gesture_detector = None
         self.detector = None
         self.camera = None
+        self._latest_frame_processor = None  # NEW Phase 3.1
         
         logger.info("✅ Enhanced service shutdown complete")
     
