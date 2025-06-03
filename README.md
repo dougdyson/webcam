@@ -3,7 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/webcam-detection.svg)](https://badge.fury.io/py/webcam-detection)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests: 637/637](https://img.shields.io/badge/tests-637%2F637%20passing-brightgreen.svg)](README.md#testing)
+[![Tests: 716/716](https://img.shields.io/badge/tests-716%2F716%20passing-brightgreen.svg)](README.md#testing)
 
 **Local, real-time human detection system with AI-powered scene descriptions and gesture recognition.**
 
@@ -11,23 +11,30 @@ Perfect for guard clauses in speaker verification, smart home automation, securi
 
 ## ✨ What's New
 
-- 🚀 **Production Ready**: 637 comprehensive tests, enterprise-grade reliability
+- 🚀 **Zero Lag Processing**: Revolutionary LatestFrameProcessor eliminates frame backlog
+- ⚡ **Real-time Performance**: Always processes most current frame, never old queued frames  
+- 📊 **Advanced Monitoring**: Performance analytics, lag detection, and adaptive optimization
+- 🔧 **Callback System**: Async/sync callback support with error isolation
+- 🧪 **Production Ready**: 716 comprehensive tests, enterprise-grade reliability
 - 🤖 **AI Descriptions**: Local Ollama integration with Gemma3 models  
 - 🖐️ **Gesture Recognition**: Stop gesture detection for voice control
 - 📡 **Real-time Streaming**: SSE events for web dashboards
 - ⚡ **Extended Range**: 3x detection range with multi-modal fusion
 
-## 🚀 Key Features
+## �� Key Features
 
+- **⚡ Zero Lag Processing**: Latest frame processor eliminates queuing delays 
 - **🎯 Multi-Modal Detection**: Combines pose + face detection for 3x extended range
-- **⚡ Real-Time Processing**: 15-30 FPS with <100ms latency
+- **📊 Performance Monitoring**: Real-time lag detection and adaptive optimization
+- **🔧 Callback System**: Robust async/sync callback support with error isolation
+- **⚡ Real-Time Processing**: 15-30 FPS with <100ms latency, always current frame
 - **🏠 Local Processing**: No cloud dependencies, complete privacy
 - **🛡️ Guard Clause Ready**: Perfect for speaker verification systems
 - **🔧 Service Integration**: HTTP/SSE APIs for easy integration
 - **🤖 AI Descriptions**: Optional Ollama integration for scene analysis
 - **🖐️ Gesture Control**: Hand gesture detection for voice assistants
 - **📐 Extended Range**: Works from desk distance to room distance
-- **🧪 Production Ready**: 637 tests, battle-tested architecture
+- **🧪 Production Ready**: 716 tests, battle-tested architecture
 
 ## 📦 Quick Start
 
@@ -110,6 +117,60 @@ curl http://localhost:8767/description/latest
 curl http://localhost:8766/events/gestures/my_app
 # → Real-time gesture events for web dashboards
 ```
+
+## ⚡ Latest Frame Processing (Zero Lag)
+
+**Revolutionary frame processing that eliminates lag by always processing the most current frame instead of queuing.**
+
+### The Problem with Traditional Queuing
+- Frames build up when processing is slower than capture rate
+- Descriptions generated for old frames (seconds behind reality)
+- Memory usage grows with frame backlog
+- Applications get stale, outdated data
+
+### Latest Frame Solution
+```python
+from webcam_detection.processing import create_latest_frame_processor
+
+# Create processor that always grabs fresh frames
+processor = create_latest_frame_processor(
+    camera_manager=camera,
+    detector=detector,
+    target_fps=5.0,
+    real_time_mode=True  # Optimized for zero lag
+)
+
+# Add callback to receive real-time results
+def handle_result(result):
+    print(f"CURRENT scene: {result.human_present} (frame age: {result.frame_age:.2f}s)")
+
+processor.add_result_callback(handle_result)
+
+# Start processing - always current, never behind!
+await processor.start()
+```
+
+### Advanced Performance Monitoring
+```python
+# Real-time performance insights
+perf = processor.get_real_time_performance_metrics()
+print(f"Current FPS: {perf['current_fps']:.1f}")
+print(f"Efficiency: {perf['processing_efficiency_percent']:.1f}%")
+print(f"Lag Status: {perf['lag_detection_status']}")
+
+# Adaptive optimization recommendations
+recommendations = processor.get_optimization_recommendations()
+for action in recommendations['recommended_actions']:
+    print(f"💡 {action['action']}: {action['description']}")
+```
+
+### Key Latest Frame Features
+- **🚀 Zero Frame Backlog**: Never process old frames
+- **📊 Performance Analytics**: Real-time efficiency monitoring  
+- **🔧 Adaptive Optimization**: Automatic FPS adjustment under load
+- **⚡ Callback System**: Async/sync callback support with error isolation
+- **🛡️ Error Recovery**: Robust error handling and monitoring
+- **💾 Memory Efficient**: No frame accumulation, constant memory usage
 
 ## 🔧 Utility Scripts
 
@@ -215,7 +276,7 @@ Real-time presence for kiosks, digital signage, and interactive displays.
 
 ## 🧪 Testing
 
-Comprehensive test suite with 660 tests covering all components, beautifully organized to mirror the source structure:
+Comprehensive test suite with 716 tests covering all components, beautifully organized to mirror the source structure:
 
 ```bash
 # Run all tests
@@ -225,6 +286,7 @@ pytest tests/
 pytest tests/test_detection/ -v    # Detection algorithms (83 tests)
 pytest tests/test_service/ -v     # Service layer (94 tests)
 pytest tests/test_ollama/ -v      # AI integration (134 tests)
+pytest tests/test_processing/ -v  # Processing pipeline (123 tests)
 
 # With coverage
 pytest --cov=src tests/
@@ -235,7 +297,7 @@ pytest --cov=src tests/
 tests/
 ├── test_camera/     # Camera system (49 tests)
 ├── test_detection/  # Detection algorithms (83 tests)
-├── test_processing/ # Processing pipeline (67 tests)
+├── test_processing/ # Processing pipeline (123 tests) ⚡ NEW: Latest Frame Processor
 ├── test_utils/      # Utilities & config (36 tests)
 ├── test_cli/        # Command-line interface (43 tests)
 ├── test_gesture/    # Gesture recognition (46 tests)
