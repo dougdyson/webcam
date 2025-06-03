@@ -3,7 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/webcam-detection.svg)](https://badge.fury.io/py/webcam-detection)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests: 716/716](https://img.shields.io/badge/tests-716%2F716%20passing-brightgreen.svg)](README.md#testing)
+[![Tests: 744/744](https://img.shields.io/badge/tests-744%2F744%20passing-brightgreen.svg)](README.md#testing)
 
 **Local, real-time human detection system with AI-powered scene descriptions and gesture recognition.**
 
@@ -276,7 +276,7 @@ Real-time presence for kiosks, digital signage, and interactive displays.
 
 ## 🧪 Testing
 
-Comprehensive test suite with 716 tests covering all components, beautifully organized to mirror the source structure:
+Comprehensive test suite with 744 tests covering all components, beautifully organized to mirror the source structure:
 
 ```bash
 # Run all tests
