@@ -162,11 +162,44 @@ class HTTPDetectionService:
         @self.app.get("/health")
         async def health_check():
             """Health check endpoint."""
-            return JSONResponse(content={
+            health_data = {
                 "status": "healthy",
                 "timestamp": datetime.now().isoformat(),
                 "uptime": time.time() - self.start_time
-            })
+            }
+            
+            # Add description service health if available
+            if self._description_service is not None:
+                # Check if description service is functioning
+                try:
+                    # Simple availability check
+                    if hasattr(self._description_service, 'ollama_client'):
+                        client = self._description_service.ollama_client
+                        is_available = getattr(client, 'is_available', lambda: True)()
+                        
+                        health_data["description_service"] = {
+                            "available": is_available,
+                            "status": "healthy" if is_available else "degraded",
+                            "total_descriptions": self._description_stats.get('total_descriptions', 0),
+                            "processing_errors": self._description_stats.get('failed_descriptions', 0)
+                        }
+                    else:
+                        health_data["description_service"] = {
+                            "available": True,
+                            "status": "healthy",
+                            "total_descriptions": self._description_stats.get('total_descriptions', 0),
+                            "processing_errors": self._description_stats.get('failed_descriptions', 0)
+                        }
+                except Exception as e:
+                    health_data["description_service"] = {
+                        "available": False,
+                        "status": "error",
+                        "error": str(e),
+                        "total_descriptions": self._description_stats.get('total_descriptions', 0),
+                        "processing_errors": self._description_stats.get('failed_descriptions', 0)
+                    }
+            
+            return JSONResponse(content=health_data)
         
         @self.app.get("/statistics")
         async def get_statistics():
@@ -190,6 +223,7 @@ class HTTPDetectionService:
                     "total_descriptions": self._description_stats['total_descriptions'],
                     "successful_descriptions": self._description_stats['successful_descriptions'],
                     "failed_descriptions": self._description_stats['failed_descriptions'],
+                    "processing_errors": self._description_stats['failed_descriptions'],  # Add processing_errors alias
                     "cache_hits": self._description_stats['cache_hits'],
                     "cache_misses": self._description_stats['cache_misses'],
                     "cache_hit_rate": round(cache_hit_rate, 3),
@@ -209,14 +243,44 @@ class HTTPDetectionService:
                         detail="Description service not available"
                     )
                 
+                # Check if the underlying Ollama service is available
+                try:
+                    if hasattr(self._description_service, 'ollama_client'):
+                        client = self._description_service.ollama_client
+                        is_available = getattr(client, 'is_available', lambda: True)()
+                        if not is_available:
+                            raise HTTPException(
+                                status_code=503,
+                                detail="Ollama service unavailable"
+                            )
+                except Exception as ollama_check_error:
+                    # If we can't check Ollama availability, assume it's down
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Ollama service unavailable"
+                    )
+                
                 # Get latest description
                 description_result = self._description_service.get_latest_description()
                 
-                # Handle no description available
+                # Handle no description available (this is different from service being down)
                 if description_result is None:
                     raise HTTPException(
                         status_code=404,
                         detail="No description available"
+                    )
+                
+                # Check if the result indicates a service failure
+                error_type = getattr(description_result, 'error', None)
+                if error_type in ['service_unavailable', 'timeout', 'connection_error']:
+                    # Service is failing, return 503
+                    raise HTTPException(
+                        status_code=503,
+                        detail={
+                            "error": "Description service temporarily unavailable",
+                            "error_type": error_type,
+                            "fallback_description": description_result.description
+                        }
                     )
                 
                 # Handle description service errors

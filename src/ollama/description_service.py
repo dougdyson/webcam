@@ -23,6 +23,7 @@ import sys
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
+import threading
 
 from .client import OllamaClient, OllamaError
 from .snapshot_buffer import Snapshot
@@ -54,6 +55,7 @@ class DescriptionServiceConfig:
     Controls caching, concurrency, timeouts, error handling, and processing parameters.
     Follows existing service configuration patterns for consistency.
     Enhanced with comprehensive error handling and resilience features.
+    Phase 7.2: Enhanced with proper exponential backoff timing and stress recovery.
     """
     cache_ttl_seconds: int = 300  # 5 minutes
     max_concurrent_requests: int = 3
@@ -65,9 +67,16 @@ class DescriptionServiceConfig:
     # Error handling and resilience options
     enable_fallback_descriptions: bool = True
     retry_attempts: int = 2
-    retry_backoff_factor: float = 1.5
+    retry_backoff_factor: float = 2.0  # Phase 7.2: Proper exponential backoff
+    initial_backoff_delay: float = 0.5  # Phase 7.2: Start with 0.5s delay
+    max_backoff_delay: float = 16.0  # Phase 7.2: Maximum backoff delay
     validate_responses: bool = True
     retry_policy: Optional[Any] = None  # RetryPolicy from error_handler
+    
+    # Phase 7.2: Stress recovery and high-load handling
+    enable_stress_recovery: bool = True
+    stress_failure_threshold: float = 0.5  # 50% failure rate indicates stress
+    stress_backoff_multiplier: float = 2.0  # Additional backoff during stress
     
     def __post_init__(self):
         """Validate configuration parameters."""
@@ -81,6 +90,10 @@ class DescriptionServiceConfig:
             raise ValueError("retry_attempts must be non-negative")
         if self.retry_backoff_factor <= 0:
             raise ValueError("retry_backoff_factor must be positive")
+        if self.initial_backoff_delay <= 0:
+            raise ValueError("initial_backoff_delay must be positive")
+        if self.max_backoff_delay <= 0:
+            raise ValueError("max_backoff_delay must be positive")
 
 
 @dataclass
@@ -277,6 +290,10 @@ class DescriptionService:
         # Initialize concurrency control
         self._processing_semaphore = asyncio.Semaphore(self.config.max_concurrent_requests)
         
+        # Phase 7.2: Thread-safe semaphore management for concurrent scenarios
+        self._semaphore_cache = {}  # Cache semaphores per event loop
+        self._semaphore_lock = threading.Lock()  # Thread-safe access
+        
         # Initialize error handler for comprehensive error handling
         self.error_handler = OllamaErrorHandler(
             enable_detailed_logging=True,
@@ -294,7 +311,35 @@ class DescriptionService:
         # Latest description tracking for HTTP API integration
         self._latest_description: Optional[DescriptionResult] = None
         
+        # Phase 7.2: Stress recovery tracking
+        self._stress_metrics = {
+            'total_requests': 0,
+            'failed_requests': 0,
+            'current_failure_rate': 0.0,
+            'stress_mode_active': False,
+            'stress_mode_start_time': None,
+            'recovery_attempts': 0
+        }
+        
         logger.debug(f"DescriptionService initialized with config: {self.config}")
+    
+    def _get_processing_semaphore(self) -> asyncio.Semaphore:
+        """Get the appropriate processing semaphore for the current event loop."""
+        try:
+            loop = asyncio.get_running_loop()
+            loop_id = id(loop)
+            
+            with self._semaphore_lock:
+                if loop_id not in self._semaphore_cache:
+                    # Create a new semaphore for this event loop
+                    self._semaphore_cache[loop_id] = asyncio.Semaphore(self.config.max_concurrent_requests)
+                    logger.debug(f"Created new semaphore for event loop {loop_id}")
+                
+                return self._semaphore_cache[loop_id]
+                
+        except RuntimeError:
+            # No event loop running, use the default semaphore
+            return self._processing_semaphore
     
     async def get_description(self) -> Optional[DescriptionResult]:
         """
@@ -506,8 +551,13 @@ class DescriptionService:
                     return cached_result
             
             # Acquire processing semaphore for concurrency control
-            async with self._processing_semaphore:
+            async with self._get_processing_semaphore():
                 result = await self._process_snapshot(snapshot, start_time)
+                
+                # Phase 7.2: Update stress metrics based on result
+                success = (result.error is None)
+                if self.config.enable_stress_recovery:
+                    self._update_stress_metrics(success)
                 
                 # Cache successful results only
                 if self.config.enable_caching and result.error is None:
@@ -543,6 +593,10 @@ class DescriptionService:
                 cached=False,
                 error=category.value
             )
+            
+            # Phase 7.2: Update stress metrics for exceptions
+            if self.config.enable_stress_recovery:
+                self._update_stress_metrics(success=False)
             
             # Phase 5.2: Publish DESCRIPTION_FAILED event for exceptions
             self._publish_description_failed_event(error_result, snapshot)
@@ -608,7 +662,7 @@ class DescriptionService:
                 
                 # Check if we should retry
                 if attempt < max_attempts - 1:
-                    # Calculate backoff delay
+                    # Calculate backoff delay - Phase 7.2: Proper exponential backoff
                     if retry_policy:
                         from .error_handler import ExponentialBackoff
                         backoff = ExponentialBackoff(
@@ -618,8 +672,10 @@ class DescriptionService:
                         )
                         delay = backoff.get_delay(attempt)
                     else:
-                        # Use simple exponential backoff with config parameters
-                        delay = 0.1 * (self.config.retry_backoff_factor ** attempt)
+                        # Phase 7.2: Use proper exponential backoff with config parameters
+                        # Pattern: 0.5s, 1.0s, 2.0s, 4.0s, etc.
+                        delay = self.config.initial_backoff_delay * (self.config.retry_backoff_factor ** attempt)
+                        delay = min(delay, self.config.max_backoff_delay)  # Cap at maximum
                     
                     await asyncio.sleep(delay)
                     continue
@@ -829,4 +885,37 @@ class DescriptionService:
             logger.debug("DescriptionService cleanup completed")
             
         except Exception as e:
-            logger.error(f"Error during DescriptionService cleanup: {e}") 
+            logger.error(f"Error during DescriptionService cleanup: {e}")
+    
+    def _update_stress_metrics(self, success: bool) -> None:
+        """Update stress tracking metrics for adaptive error recovery."""
+        self._stress_metrics['total_requests'] += 1
+        if not success:
+            self._stress_metrics['failed_requests'] += 1
+        
+        # Calculate rolling failure rate (over last 10 requests for responsiveness)
+        if self._stress_metrics['total_requests'] >= 10:
+            recent_window = min(10, self._stress_metrics['total_requests'])
+            recent_failures = min(self._stress_metrics['failed_requests'], recent_window)
+            self._stress_metrics['current_failure_rate'] = recent_failures / recent_window
+        else:
+            self._stress_metrics['current_failure_rate'] = self._stress_metrics['failed_requests'] / self._stress_metrics['total_requests']
+        
+        # Activate stress mode if failure rate exceeds threshold
+        if (self._stress_metrics['current_failure_rate'] >= self.config.stress_failure_threshold and 
+            not self._stress_metrics['stress_mode_active']):
+            self._stress_metrics['stress_mode_active'] = True
+            self._stress_metrics['stress_mode_start_time'] = time.time()
+            logger.warning(f"Stress mode activated - failure rate: {self._stress_metrics['current_failure_rate']:.2f}")
+        
+        # Deactivate stress mode if failure rate improves
+        elif (self._stress_metrics['current_failure_rate'] < self.config.stress_failure_threshold * 0.5 and
+              self._stress_metrics['stress_mode_active']):
+            stress_duration = time.time() - (self._stress_metrics['stress_mode_start_time'] or 0)
+            self._stress_metrics['stress_mode_active'] = False
+            self._stress_metrics['stress_mode_start_time'] = None
+            logger.info(f"Stress mode deactivated after {stress_duration:.1f}s - failure rate improved to: {self._stress_metrics['current_failure_rate']:.2f}")
+    
+    def get_stress_statistics(self) -> Dict[str, Any]:
+        """Get stress tracking statistics for monitoring."""
+        return self._stress_metrics.copy() 
