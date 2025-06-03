@@ -121,6 +121,12 @@ class LatestFrameProcessor:
         self._recent_frame_intervals = []  # Track frame intervals for performance
         self._fps_adjustment_callbacks = []  # Track FPS adjustments
         
+        # Callback error tracking (NEW Phase 2.3)
+        self._callback_error_count = 0
+        self._callback_error_types = {}  # Track error type counts
+        self._callbacks_with_errors = set()  # Track which callbacks have errored
+        self._successful_callback_invocations = 0
+        
         # Memory monitoring (NEW Phase 2.2)
         if self.memory_monitoring:
             import psutil
@@ -206,8 +212,20 @@ class LatestFrameProcessor:
                                 await callback(result)
                             else:
                                 callback(result)
+                            
+                            # Track successful callback invocation (NEW Phase 2.3)
+                            with self._stats_lock:
+                                self._successful_callback_invocations += 1
+                                
                         except Exception as e:
                             logger.error(f"Error in result callback: {e}")
+                            
+                            # Track callback error (NEW Phase 2.3)
+                            with self._stats_lock:
+                                self._callback_error_count += 1
+                                error_type = type(e).__name__
+                                self._callback_error_types[error_type] = self._callback_error_types.get(error_type, 0) + 1
+                                self._callbacks_with_errors.add(str(callback))
                 
                 # Calculate processing time and check for adaptive FPS adjustment
                 processing_time = time.time() - process_start
@@ -884,6 +902,21 @@ class LatestFrameProcessor:
                 'memory_efficiency': 0.0,
                 'memory_warnings': [f'Memory monitoring error: {e}'],
                 'memory_optimization_suggestions': []
+            }
+
+    def get_callback_error_statistics(self) -> Dict[str, Any]:
+        """Get callback error statistics for monitoring and debugging."""
+        with self._stats_lock:
+            return {
+                'total_callback_errors': self._callback_error_count,
+                'error_types': dict(self._callback_error_types),  # Create copy
+                'callbacks_with_errors': len(self._callbacks_with_errors),
+                'successful_callback_invocations': self._successful_callback_invocations,
+                'callback_error_rate': (
+                    self._callback_error_count / 
+                    max(1, self._callback_error_count + self._successful_callback_invocations)
+                ),
+                'total_callback_invocations': self._callback_error_count + self._successful_callback_invocations
             }
 
     async def _adjust_fps_for_performance(self, current_processing_time: float):
