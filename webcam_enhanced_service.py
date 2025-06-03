@@ -234,6 +234,38 @@ class EnhancedWebcamService:
         fps_target = 15
         frame_time = 1.0 / fps_target
         
+        # NEW: Background description processing queue to prevent interference
+        description_queue = []
+        
+        def process_description_background():
+            """Background thread for description processing to prevent blocking."""
+            while self.is_running:
+                if description_queue and self.description_service:
+                    try:
+                        frame, metadata = description_queue.pop(0)
+                        snapshot = Snapshot(frame=frame, metadata=metadata)
+                        
+                        # Process in isolated event loop
+                        import asyncio
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            description_result = loop.run_until_complete(
+                                self.description_service.describe_snapshot(snapshot)
+                            )
+                            if description_result and hasattr(description_result, 'success') and description_result.success:
+                                logger.debug(f"Background description generated: {description_result.description[:50]}...")
+                        finally:
+                            loop.close()
+                    except Exception as e:
+                        logger.debug(f"Background description error: {e}")
+                time.sleep(0.1)  # Small delay to prevent busy waiting
+        
+        # Start background description processing thread
+        if self.description_service:
+            description_thread = threading.Thread(target=process_description_background, daemon=True)
+            description_thread.start()
+        
         while self.is_running and not self._shutdown_requested:
             try:
                 # Get frame from camera
@@ -243,84 +275,60 @@ class EnhancedWebcamService:
                     human_result = self.detector.detect(frame)
                     detection_count += 1
                     
-                    # TESTING: Re-enable gesture detection to test shoulder fix
+                    # Gesture detection with clean status tracking
                     gesture_status = "None"
                     gesture_confidence = 0.0
                     
-                    # TESTING: Simple threshold check with shoulder validation
+                    # Simple threshold check with shoulder validation
                     if human_result.human_present and human_result.confidence > 0.6:
-                        try:
-                            # Direct gesture detection with pose landmarks for shoulder reference
-                            gesture_result = self.gesture_detector.detect_gestures(
-                                frame, 
-                                pose_landmarks=getattr(human_result, '_original_pose_landmarks', None)
-                            )
+                        # Direct gesture detection with pose landmarks for shoulder reference
+                        pose_landmarks = getattr(human_result, '_original_pose_landmarks', None)
+                        
+                        gesture_result = self.gesture_detector.detect_gestures(frame, pose_landmarks)
+                        
+                        if gesture_result and gesture_result.gesture_detected:
+                            gesture_status = f"{gesture_result.gesture_type}"
+                            gesture_confidence = gesture_result.confidence
                             
-                            if gesture_result and gesture_result.gesture_detected:
-                                gesture_status = f"{gesture_result.gesture_type}"
-                                gesture_confidence = gesture_result.confidence
-                                
-                                # ENABLED: Simple event publishing - BOTH sync and async for SSE
-                                if self.sse_service:
+                            # ENABLED: Simple event publishing - BOTH sync and async for SSE
+                            if self.sse_service:
+                                try:
+                                    from src.service.events import ServiceEvent, EventType
+                                    event = ServiceEvent(
+                                        event_type=EventType.GESTURE_DETECTED,
+                                        data={
+                                            "gesture_type": gesture_result.gesture_type,
+                                            "confidence": gesture_result.confidence,
+                                            "hand": gesture_result.hand
+                                        },
+                                        timestamp=datetime.now()
+                                    )
+                                    # Publish both sync AND async for SSE service
+                                    self.event_publisher.publish(event)
+                                    
+                                    # CRITICAL: Also publish async for SSE service
+                                    import asyncio
                                     try:
-                                        from src.service.events import ServiceEvent, EventType
-                                        event = ServiceEvent(
-                                            event_type=EventType.GESTURE_DETECTED,
-                                            data={
-                                                "gesture_type": gesture_result.gesture_type,
-                                                "confidence": gesture_result.confidence,
-                                                "hand": gesture_result.hand
-                                            },
-                                            timestamp=datetime.now()
-                                        )
-                                        # Publish both sync AND async for SSE service
-                                        self.event_publisher.publish(event)
-                                        
-                                        # CRITICAL: Also publish async for SSE service
-                                        import asyncio
-                                        try:
-                                            loop = asyncio.get_event_loop()
-                                            if loop.is_running():
-                                                asyncio.create_task(self.event_publisher.publish_async(event))
-                                        except RuntimeError:
-                                            # No event loop running - create one
-                                            asyncio.run(self.event_publisher.publish_async(event))
-                                        
-                                    except Exception as e:
-                                        print(f"Event publishing error: {e}")  # DON'T HIDE ERRORS
-                        except Exception as e:
-                            pass  # Don't let gesture detection break human detection
+                                        loop = asyncio.get_event_loop()
+                                        if loop.is_running():
+                                            asyncio.create_task(self.event_publisher.publish_async(event))
+                                    except RuntimeError:
+                                        # No event loop running - create one
+                                        asyncio.run(self.event_publisher.publish_async(event))
+                                    
+                                except Exception as e:
+                                    logger.debug(f"Event publishing error: {e}")  # Use logger instead of print
                     
-                    # NEW: Process frame for AI description (Phase 6.2)
+                    # NEW: Queue frame for background description processing (NON-BLOCKING)
                     if human_result.human_present and human_result.confidence > 0.6 and self.description_service:
-                        try:
-                            # Create proper Snapshot object for description service
+                        if len(description_queue) < 3:  # Limit queue size to prevent memory issues
                             snapshot_metadata = SnapshotMetadata(
                                 timestamp=datetime.now(),
                                 confidence=human_result.confidence,
                                 human_present=human_result.human_present,
                                 detection_source="multimodal"
                             )
-                            snapshot = Snapshot(frame=frame, metadata=snapshot_metadata)
-                            
-                            # Process snapshot for description asynchronously from sync thread
-                            # Use asyncio to handle the async call properly
-                            import asyncio
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                            try:
-                                description_result = loop.run_until_complete(
-                                    self.description_service.describe_snapshot(snapshot)
-                                )
-                                
-                                if description_result and hasattr(description_result, 'success') and description_result.success:
-                                    # Description processing successful
-                                    logger.debug(f"Description generated: {description_result.description}")
-                            finally:
-                                loop.close()
-                            
-                        except Exception as e:
-                            logger.debug(f"Description processing error: {e}")  # Don't break detection loop
+                            description_queue.append((frame.copy(), snapshot_metadata))  # Copy frame to avoid issues
                     
                     # Update HTTP service status (simple)
                     if self.http_service:
@@ -333,9 +341,11 @@ class EnhancedWebcamService:
                     current_time = time.time()
                     if current_time - last_status_print >= 2.0:
                         status = "👤 HUMAN" if human_result.human_present else "❌ NO HUMAN"
-                        # TESTING: Re-enable gesture display to test shoulder fix
+                        # Clean gesture display with current status
                         gesture_display = f"{gesture_status} ({gesture_confidence:.2f})" if gesture_confidence > 0 else gesture_status
-                        print(f"\r{status} | Conf: {human_result.confidence:.2f} | Gesture: {gesture_display} | Frames: {detection_count} | FPS: {fps_target}", end='', flush=True)
+                        desc_queue_size = len(description_queue)
+                        desc_status = f" | 🤖 Queue: {desc_queue_size}" if desc_queue_size > 0 else ""
+                        print(f"\r{status} | Conf: {human_result.confidence:.2f} | Gesture: {gesture_display} | Frames: {detection_count} | FPS: {fps_target}{desc_status}", end='', flush=True)
                         last_status_print = current_time
                     
                     time.sleep(frame_time)
