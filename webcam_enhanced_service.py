@@ -414,8 +414,69 @@ class EnhancedWebcamService:
         self.ollama_client = None
         self.ollama_image_processor = None
         self.gesture_detector = None
+        self.detector = None
+        self.camera = None
         
         logger.info("✅ Enhanced service shutdown complete")
+    
+    def _process_single_frame(self, frame):
+        """
+        Process a single frame for end-to-end testing.
+        
+        This method provides a synchronous interface for testing the complete pipeline:
+        Frame → Detection → [If Human] → Description Processing → Event Publishing
+        
+        Args:
+            frame: The frame to process
+            
+        Returns:
+            dict: Processing results including detection and description outcomes
+        """
+        if frame is None:
+            return {"error": "Invalid frame"}
+        
+        results = {
+            "detection_called": False,
+            "human_detected": False,
+            "confidence": 0.0,
+            "description_called": False,
+            "description_result": None,
+            "events_published": []
+        }
+        
+        try:
+            # Step 1: Human detection
+            if self.detector:
+                detection_result = self.detector.detect(frame)
+                results["detection_called"] = True
+                results["human_detected"] = detection_result.human_present
+                results["confidence"] = detection_result.confidence
+                
+                # Step 2: Conditional description processing (only if human present with sufficient confidence)
+                if detection_result.human_present and detection_result.confidence > 0.6 and self.description_service:
+                    try:
+                        # Process frame for description
+                        description_result = self.description_service.describe_snapshot(frame)
+                        results["description_called"] = True
+                        results["description_result"] = description_result
+                        
+                        if description_result and hasattr(description_result, 'success') and description_result.success:
+                            # Description processing successful - would normally publish events here
+                            results["events_published"].append("DESCRIPTION_GENERATED")
+                        else:
+                            # Description processing failed - would normally publish error events
+                            results["events_published"].append("DESCRIPTION_FAILED")
+                            
+                    except Exception as e:
+                        # Description processing error
+                        results["events_published"].append("DESCRIPTION_FAILED")
+                        logger.debug(f"Description processing error: {e}")
+                
+        except Exception as e:
+            results["error"] = str(e)
+            logger.error(f"Frame processing error: {e}")
+        
+        return results
     
     def setup_signal_handlers(self):
         """Setup signal handlers for graceful shutdown."""

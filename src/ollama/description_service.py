@@ -283,15 +283,16 @@ class DescriptionService:
             enable_metrics=True
         )
         
-        # Phase 5.2: Event publisher integration
+        # Event publishing
         self._event_publisher = None
-        self._event_publishing_metrics = {
+        self._event_publishing_stats = {
             'events_published': 0,
-            'publishing_failures': 0,
-            'retry_attempts': 0,
-            'average_publish_time_ms': 0.0,
-            'total_publish_time_ms': 0.0
+            'publishing_errors': 0,
+            'last_published': None
         }
+        
+        # Latest description tracking for HTTP API integration
+        self._latest_description: Optional[DescriptionResult] = None
         
         logger.debug(f"DescriptionService initialized with config: {self.config}")
     
@@ -343,7 +344,7 @@ class DescriptionService:
     
     def get_event_publishing_stats(self) -> Dict[str, Any]:
         """Get event publishing statistics for monitoring."""
-        return self._event_publishing_metrics.copy()
+        return self._event_publishing_stats.copy()
     
     def _publish_event(self, event) -> None:
         """
@@ -364,16 +365,16 @@ class DescriptionService:
             
             # Update success metrics
             publish_time_ms = (time.time() - start_time) * 1000
-            self._event_publishing_metrics['events_published'] += 1
-            self._event_publishing_metrics['total_publish_time_ms'] += publish_time_ms
-            self._event_publishing_metrics['average_publish_time_ms'] = \
-                self._event_publishing_metrics['total_publish_time_ms'] / self._event_publishing_metrics['events_published']
+            self._event_publishing_stats['events_published'] += 1
+            self._event_publishing_stats['total_publish_time_ms'] += publish_time_ms
+            self._event_publishing_stats['average_publish_time_ms'] = \
+                self._event_publishing_stats['total_publish_time_ms'] / self._event_publishing_stats['events_published']
             
             logger.debug(f"Published event: {event.event_type.value}")
             
         except Exception as e:
             # Track failure but don't let it affect description processing
-            self._event_publishing_metrics['publishing_failures'] += 1
+            self._event_publishing_stats['publishing_errors'] += 1
             logger.warning(f"Failed to publish event {event.event_type.value}: {e}")
     
     def _retry_event_publishing(self, event, max_retries: int = 2) -> None:
@@ -389,7 +390,7 @@ class DescriptionService:
                 self._publish_event(event)
                 return  # Success, exit retry loop
             except Exception as e:
-                self._event_publishing_metrics['retry_attempts'] += 1
+                self._event_publishing_stats['retry_attempts'] += 1
                 if attempt < max_retries:
                     # Exponential backoff
                     import time
@@ -494,9 +495,12 @@ class DescriptionService:
             if self.config.enable_caching:
                 cached_result = self.cache.get(snapshot)
                 if cached_result is not None:
-                    logger.debug("Returning cached description result")
+                    logger.debug("Cache hit - returning cached description")
                     
-                    # Phase 5.2: Publish DESCRIPTION_CACHED event
+                    # Update latest description even for cached results
+                    self._latest_description = cached_result
+                    
+                    # Publish cache hit event
                     self._publish_description_cached_event(cached_result, snapshot)
                     
                     return cached_result
@@ -585,13 +589,18 @@ class DescriptionService:
                 processing_time = int((time.time() - start_time) * 1000)
                 
                 # Ollama client returns just the description string
-                return DescriptionResult(
+                result = DescriptionResult(
                     description=description_text,
                     confidence=0.9,  # Default confidence since Ollama doesn't provide this
                     timestamp=datetime.now(),
                     processing_time_ms=processing_time,
                     cached=False
                 )
+                
+                # Update latest description
+                self._latest_description = result
+                
+                return result
                 
             except (asyncio.TimeoutError, OllamaTimeoutError, TimeoutError) as e:
                 last_error = e
@@ -624,7 +633,7 @@ class DescriptionService:
                     else:
                         error_description = f"Error: Ollama request timeout after {self.config.timeout_seconds}s"
                     
-                    return DescriptionResult(
+                    result = DescriptionResult(
                         description=error_description,
                         confidence=0.0,
                         timestamp=datetime.now(),
@@ -632,6 +641,11 @@ class DescriptionService:
                         cached=False,
                         error="timeout"
                     )
+                    
+                    # Update latest description
+                    self._latest_description = result
+                    
+                    return result
             
             except (ConnectionRefusedError, ConnectionError, OllamaUnavailableError) as e:
                 last_error = e
@@ -658,7 +672,7 @@ class DescriptionService:
                     else:
                         error_description = f"Error: Ollama service unavailable"
                     
-                    return DescriptionResult(
+                    result = DescriptionResult(
                         description=error_description,
                         confidence=0.0,
                         timestamp=datetime.now(),
@@ -666,6 +680,11 @@ class DescriptionService:
                         cached=False,
                         error="service_unavailable"
                     )
+                    
+                    # Update latest description
+                    self._latest_description = result
+                    
+                    return result
             
             except OllamaError as e:
                 last_error = e
@@ -693,7 +712,7 @@ class DescriptionService:
                     else:
                         error_description = f"Error: Ollama service error: {e}"
                     
-                    return DescriptionResult(
+                    result = DescriptionResult(
                         description=error_description,
                         confidence=0.0,
                         timestamp=datetime.now(),
@@ -701,6 +720,11 @@ class DescriptionService:
                         cached=False,
                         error=category.value
                     )
+                    
+                    # Update latest description
+                    self._latest_description = result
+                    
+                    return result
             
             except Exception as e:
                 last_error = e
@@ -728,7 +752,7 @@ class DescriptionService:
                     else:
                         error_description = f"Error: Unexpected processing error: {e}"
                     
-                    return DescriptionResult(
+                    result = DescriptionResult(
                         description=error_description,
                         confidence=0.0,
                         timestamp=datetime.now(),
@@ -736,10 +760,15 @@ class DescriptionService:
                         cached=False,
                         error=category.value
                     )
+                    
+                    # Update latest description
+                    self._latest_description = result
+                    
+                    return result
         
         # This should never be reached, but just in case
         processing_time = int((time.time() - start_time) * 1000)
-        return DescriptionResult(
+        result = DescriptionResult(
             description="Error: Unexpected processing error",
             confidence=0.0,
             timestamp=datetime.now(),
@@ -747,6 +776,11 @@ class DescriptionService:
             cached=False,
             error="unknown_error"
         )
+        
+        # Update latest description
+        self._latest_description = result
+        
+        return result
     
     def get_cache_statistics(self) -> Dict[str, Any]:
         """Get cache statistics for monitoring."""
@@ -760,4 +794,39 @@ class DescriptionService:
     def cleanup_expired_entries(self) -> None:
         """Clean up expired cache entries."""
         self.cache._cleanup_expired()
-        logger.debug("Expired cache entries cleaned up") 
+        logger.debug("Expired cache entries cleaned up")
+    
+    def get_latest_description(self) -> Optional[DescriptionResult]:
+        """
+        Get the most recent description result.
+        
+        This method provides HTTP API integration by returning the latest
+        description that was processed, if available.
+        
+        Returns:
+            Most recent DescriptionResult or None if no descriptions available
+        """
+        if self._latest_description is not None:
+            logger.debug(f"Returning latest description: confidence={self._latest_description.confidence}, "
+                        f"cached={self._latest_description.cached}")
+        else:
+            logger.debug("No latest description available")
+            
+        return self._latest_description
+    
+    def cleanup(self) -> None:
+        """Clean up resources and prepare for shutdown."""
+        try:
+            # Clear cache
+            self.clear_cache()
+            
+            # Reset latest description
+            self._latest_description = None
+            
+            # Clean up event publisher reference
+            self._event_publisher = None
+            
+            logger.debug("DescriptionService cleanup completed")
+            
+        except Exception as e:
+            logger.error(f"Error during DescriptionService cleanup: {e}") 
