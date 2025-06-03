@@ -113,6 +113,17 @@ class HTTPDetectionService:
         # NEW: Description service integration for Phase 4.1
         self._description_service = None
         
+        # NEW: Description metrics tracking for Phase 4.2
+        self._description_stats = {
+            'total_descriptions': 0,
+            'successful_descriptions': 0,
+            'failed_descriptions': 0,
+            'cache_hits': 0,
+            'cache_misses': 0,
+            'average_processing_time_ms': 0.0,
+            'total_processing_time_ms': 0
+        }
+        
         # Create FastAPI app
         self.app = FastAPI(
             title="Webcam Detection HTTP API",
@@ -160,12 +171,32 @@ class HTTPDetectionService:
         @self.app.get("/statistics")
         async def get_statistics():
             """Get detection statistics."""
-            return JSONResponse(content={
+            stats = {
                 "total_detections": self.current_status.detection_count,
                 "uptime_seconds": self.current_status.uptime_seconds,
                 "current_presence": self.current_status.human_present,
                 "current_confidence": self.current_status.confidence
-            })
+            }
+            
+            # Add description statistics if description service is available
+            if self._description_service is not None:
+                # Calculate cache hit rate
+                cache_hit_rate = 0.0
+                total_cache_attempts = self._description_stats['cache_hits'] + self._description_stats['cache_misses']
+                if total_cache_attempts > 0:
+                    cache_hit_rate = self._description_stats['cache_hits'] / total_cache_attempts
+                
+                stats["description_stats"] = {
+                    "total_descriptions": self._description_stats['total_descriptions'],
+                    "successful_descriptions": self._description_stats['successful_descriptions'],
+                    "failed_descriptions": self._description_stats['failed_descriptions'],
+                    "cache_hits": self._description_stats['cache_hits'],
+                    "cache_misses": self._description_stats['cache_misses'],
+                    "cache_hit_rate": round(cache_hit_rate, 3),
+                    "average_processing_time_ms": round(self._description_stats['average_processing_time_ms'], 1)
+                }
+            
+            return JSONResponse(content=stats)
         
         @self.app.get("/description/latest")
         async def get_latest_description():
@@ -212,6 +243,24 @@ class HTTPDetectionService:
                     "processing_time_ms": getattr(description_result, 'processing_time_ms', 0),
                     "cached": getattr(description_result, 'cached', False)
                 }
+                
+                # Add enhanced cache metadata
+                cache_age_seconds = getattr(description_result, 'cache_age_seconds', 0)
+                response_data["cache_metadata"] = {
+                    "cached": getattr(description_result, 'cached', False),
+                    "cache_hit": getattr(description_result, 'cached', False),
+                    "cache_age_seconds": cache_age_seconds
+                }
+                
+                # Add performance indicators
+                response_data["performance"] = {
+                    "processing_time_ms": getattr(description_result, 'processing_time_ms', 0),
+                    "queue_time_ms": getattr(description_result, 'queue_time_ms', 0)
+                }
+                
+                # Add model information if available
+                if hasattr(description_result, 'model_used'):
+                    response_data["performance"]["model_used"] = description_result.model_used
                 
                 return JSONResponse(content=response_data)
                 
@@ -279,9 +328,55 @@ class HTTPDetectionService:
                     })
                 
                 self.logger.debug(f"Updated presence status: {self.current_status.human_present}")
+            
+            # NEW: Handle description events for Phase 4.2
+            elif event.event_type in [EventType.DESCRIPTION_GENERATED, EventType.DESCRIPTION_FAILED, EventType.DESCRIPTION_CACHED]:
+                self._handle_description_events(event)
         
         except Exception as e:
             self.logger.error(f"Error handling detection event: {e}")
+    
+    def _handle_description_events(self, event: ServiceEvent) -> None:
+        """Handle description-related events and update metrics."""
+        try:
+            data = event.data
+            
+            if event.event_type == EventType.DESCRIPTION_GENERATED:
+                # Update metrics for successful description
+                self._description_stats['total_descriptions'] += 1
+                self._description_stats['successful_descriptions'] += 1
+                
+                # Update processing time averages
+                processing_time = data.get('processing_time_ms', 0)
+                if processing_time > 0:
+                    total_time = self._description_stats['total_processing_time_ms'] + processing_time
+                    total_descriptions = self._description_stats['successful_descriptions']
+                    self._description_stats['average_processing_time_ms'] = total_time / total_descriptions
+                    self._description_stats['total_processing_time_ms'] = total_time
+                
+                # Track cache status
+                if data.get('cached', False):
+                    self._description_stats['cache_hits'] += 1
+                else:
+                    self._description_stats['cache_misses'] += 1
+                
+                self.logger.debug(f"Description generated: cached={data.get('cached', False)}")
+            
+            elif event.event_type == EventType.DESCRIPTION_FAILED:
+                # Update failure metrics
+                self._description_stats['total_descriptions'] += 1
+                self._description_stats['failed_descriptions'] += 1
+                
+                self.logger.debug(f"Description failed: {data.get('error', 'Unknown error')}")
+            
+            elif event.event_type == EventType.DESCRIPTION_CACHED:
+                # Track cache hits
+                self._description_stats['cache_hits'] += 1
+                
+                self.logger.debug("Description served from cache")
+        
+        except Exception as e:
+            self.logger.error(f"Error handling description event: {e}")
     
     async def start_server(self) -> None:
         """Start the HTTP server."""

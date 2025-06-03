@@ -5,12 +5,16 @@ Adding /description/latest endpoint to existing HTTPDetectionService
 import pytest
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import Mock, AsyncMock, patch
+
+# Import MockDescriptionResult to avoid JSON serialization issues
+from .test_http_enhanced_integration import MockDescriptionResult
 
 # These imports will fail initially - that's expected for RED phase
 try:
     from src.service.http_service import HTTPDetectionService, HTTPServiceConfig, PresenceStatus
+    from src.service.events import EventPublisher, ServiceEvent, EventType
     from src.ollama.description_service import DescriptionService, DescriptionResult
     from src.ollama.snapshot_buffer import SnapshotBuffer, Snapshot, SnapshotMetadata
     from fastapi.testclient import TestClient
@@ -82,14 +86,15 @@ class TestHTTPOllamaSuccessfulResponse:
         service = HTTPDetectionService(config)
         
         # Mock a successful description result
-        mock_description_result = Mock()
-        mock_description_result.description = "A person sitting at a desk with a laptop computer"
-        mock_description_result.confidence = 0.89
-        mock_description_result.timestamp = datetime.now()
-        mock_description_result.processing_time_ms = 12500
-        mock_description_result.cached = False
-        mock_description_result.error = None
-        mock_description_result.success = True
+        mock_description_result = MockDescriptionResult(
+            description="A person sitting at a desk with a laptop computer",
+            confidence=0.89,
+            timestamp=datetime.now().isoformat(),  # Use string format
+            processing_time_ms=12500,
+            cached=False,
+            error=None,
+            success=True
+        )
         
         # Create mock description service and inject it
         mock_description_service = Mock()
@@ -191,10 +196,11 @@ class TestHTTPOllamaErrorResponse:
         service = HTTPDetectionService(config)
         
         # Mock description service error
-        mock_error_result = Mock()
-        mock_error_result.description = None
-        mock_error_result.error = "Ollama service unavailable"
-        mock_error_result.success = False
+        mock_error_result = MockDescriptionResult(
+            description=None,
+            error="Ollama service unavailable",
+            success=False
+        )
         
         # Create mock description service and inject it
         mock_description_service = Mock()

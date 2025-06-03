@@ -24,6 +24,11 @@ class EventType(Enum):
     GESTURE_DETECTED = "gesture_detected"
     GESTURE_LOST = "gesture_lost"
     GESTURE_CONFIDENCE_UPDATE = "gesture_confidence_update"
+    
+    # NEW: Description event types (Phase 4.2)
+    DESCRIPTION_GENERATED = "description_generated"
+    DESCRIPTION_FAILED = "description_failed"
+    DESCRIPTION_CACHED = "description_cached"
 
 
 class ServiceEventError(Exception):
