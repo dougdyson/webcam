@@ -41,9 +41,10 @@ from src.camera.config import CameraConfig
 from src.processing.enhanced_frame_processor import EnhancedFrameProcessor, EnhancedProcessorConfig
 
 # NEW Phase 3.1: Latest Frame Processor integration
-from src.processing.latest_frame_processor import (
-    LatestFrameProcessor, 
+from src.processing.latest_frame_processor_refactored import (
+    LatestFrameProcessor,
     create_latest_frame_processor,
+    LatestFrameResult,
     load_processor_config,
     create_processor_from_legacy_config
 )

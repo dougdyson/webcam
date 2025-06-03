@@ -16,7 +16,7 @@ import time
 from unittest.mock import Mock, patch
 import numpy as np
 
-from src.processing.latest_frame_processor import (
+from src.processing.latest_frame_processor_refactored import (
     LatestFrameProcessor,
     LatestFrameResult,
     create_latest_frame_processor
@@ -50,8 +50,10 @@ class TestLatestFrameProcessorInitialization:
         assert processor.max_frame_age == 1.0  # Default
         assert processor.processing_interval == 0.2  # 1/5 FPS
         assert processor.is_running == False
-        assert processor._frames_processed == 0
-        assert processor._frames_skipped == 0
+        # Check statistics component is initialized
+        assert processor.statistics is not None
+        stats = processor.get_statistics()
+        assert stats['frames_processed'] == 0
         
     def test_latest_frame_processor_custom_initialization_success(self):
         """
@@ -208,7 +210,8 @@ class TestLatestFrameRetrieval:
         
         # Assert
         assert frame is None  # Should reject old frame
-        assert processor._frames_too_old == 1
+        stats = processor.get_statistics()
+        assert stats['frames_too_old'] == 1
 
 
 class TestLatestFrameProcessorErrorHandling:
