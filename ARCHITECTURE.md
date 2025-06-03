@@ -106,10 +106,10 @@ Detection Pipeline → EventPublisher → Service Layer
 ### HTTP API Endpoints
 ```
 GET /presence/simple   → {"human_present": true}     # Guard clause endpoint
-GET /presence         → Full presence status         # Detailed information  
-GET /statistics       → Performance metrics          # System monitoring
-GET /health          → Service health check         # Deployment health
-GET /description/latest → AI scene descriptions      # Optional AI features
+GET /presence         → Full presence status         # human_present, confidence, last_detection
+GET /statistics       → Performance metrics          # total_detections, current_presence, uptime_seconds
+GET /health          → Service health check         # status, uptime, timestamp
+GET /description/latest → AI scene descriptions      # description, confidence, timestamp
 ```
 
 ### Speaker Verification Integration
@@ -135,7 +135,7 @@ multimodal:
   pose_weight: 0.6          # Pose detection influence
   face_weight: 0.4          # Face detection influence  
   min_detection_confidence: 0.5
-  
+
 presence_filter:
   smoothing_window: 5
   min_confidence_threshold: 0.7
@@ -150,8 +150,8 @@ service_layer:
     port: 8767
   
   sse:
-    port: 8766
-    max_connections: 20
+  port: 8766
+  max_connections: 20
 ```
 
 ### Ollama Configuration
@@ -160,7 +160,7 @@ client:
   base_url: "http://localhost:11434"
   model: "gemma3:4b-it-q4_K_M"
   timeout_seconds: 30.0
-  
+
 description_service:
   cache_ttl_seconds: 300
   max_concurrent_requests: 3
