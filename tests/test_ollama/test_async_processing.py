@@ -325,7 +325,8 @@ class TestAsyncDescriptionProcessor:
         mock_description_service.describe_snapshot.return_value = Mock(
             description="Test description",
             confidence=0.9,
-            processing_time_ms=500
+            processing_time_ms=500,
+            error=None  # Add explicit error=None for success
         )
         
         processor = AsyncDescriptionProcessor(
@@ -373,7 +374,8 @@ class TestAsyncDescriptionProcessor:
         mock_description_service.describe_snapshot.return_value = Mock(
             description="Rate limited description",
             confidence=0.8,
-            processing_time_ms=300
+            processing_time_ms=300,
+            error=None  # Add explicit error=None for success
         )
         
         # Slow rate for testing rate limiting

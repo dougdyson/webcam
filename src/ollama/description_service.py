@@ -11,6 +11,8 @@ Key Features:
 - Integration with existing service architecture
 - Thread-safe cache with MD5 frame hashing
 - Configurable retry and error handling
+- Comprehensive error resilience with fallback descriptions
+- Integration with OllamaErrorHandler for robust error handling
 """
 import asyncio
 import logging
@@ -24,6 +26,13 @@ from datetime import datetime
 from .client import OllamaClient, OllamaError
 from .snapshot_buffer import Snapshot
 from .image_processing import OllamaImageProcessor
+from .error_handler import (
+    OllamaErrorHandler, 
+    OllamaErrorCategory, 
+    OllamaTimeoutError,
+    OllamaUnavailableError,
+    OllamaMalformedResponseError
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +42,9 @@ class DescriptionServiceConfig:
     """
     Configuration for description service.
     
-    Controls caching, concurrency, timeouts, and processing parameters.
+    Controls caching, concurrency, timeouts, error handling, and processing parameters.
     Follows existing service configuration patterns for consistency.
+    Enhanced with comprehensive error handling and resilience features.
     """
     cache_ttl_seconds: int = 300  # 5 minutes
     max_concurrent_requests: int = 3
@@ -42,6 +52,13 @@ class DescriptionServiceConfig:
     max_cache_entries: int = 100
     enable_caching: bool = True
     default_prompt: str = "Describe what you see in this image. Be concise and specific."
+    
+    # Error handling and resilience options
+    enable_fallback_descriptions: bool = True
+    retry_attempts: int = 2
+    retry_backoff_factor: float = 1.5
+    validate_responses: bool = True
+    retry_policy: Optional[Any] = None  # RetryPolicy from error_handler
     
     def __post_init__(self):
         """Validate configuration parameters."""
@@ -51,6 +68,10 @@ class DescriptionServiceConfig:
             raise ValueError("max_concurrent_requests must be positive")
         if self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
+        if self.retry_attempts < 0:
+            raise ValueError("retry_attempts must be non-negative")
+        if self.retry_backoff_factor <= 0:
+            raise ValueError("retry_backoff_factor must be positive")
 
 
 @dataclass
@@ -68,6 +89,11 @@ class DescriptionResult:
     cached: bool = False
     error: Optional[str] = None
     
+    @property
+    def success(self) -> bool:
+        """Check if processing was successful (no error)."""
+        return self.error is None
+    
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary for HTTP API integration."""
         return {
@@ -76,7 +102,8 @@ class DescriptionResult:
             'timestamp': self.timestamp.isoformat(),
             'processing_time_ms': self.processing_time_ms,
             'cached': self.cached,
-            'error': self.error
+            'error': self.error,
+            'success': self.success
         }
 
 
@@ -241,6 +268,12 @@ class DescriptionService:
         # Initialize concurrency control
         self._processing_semaphore = asyncio.Semaphore(self.config.max_concurrent_requests)
         
+        # Initialize error handler for comprehensive error handling
+        self.error_handler = OllamaErrorHandler(
+            enable_detailed_logging=True,
+            enable_metrics=True
+        )
+        
         logger.debug(f"DescriptionService initialized with config: {self.config}")
     
     async def describe_snapshot(self, snapshot: Snapshot) -> DescriptionResult:
@@ -281,86 +314,229 @@ class DescriptionService:
                 
         except Exception as e:
             processing_time = int((time.time() - start_time) * 1000)
-            logger.error(f"Unexpected error processing snapshot: {e}", exc_info=True)
+            
+            # Use error handler for comprehensive error handling
+            self.error_handler.handle_error(e, context="describe_snapshot")
+            category = self.error_handler.categorize_error(e)
+            
+            # Get appropriate fallback description
+            if self.config.enable_fallback_descriptions:
+                fallback_description = self.error_handler.get_fallback_description(category)
+                error_description = fallback_description
+            else:
+                error_description = f"Error: {str(e)}"
             
             return DescriptionResult(
-                description=f"Error: {str(e)}",
+                description=error_description,
                 confidence=0.0,
                 timestamp=datetime.now(),
                 processing_time_ms=processing_time,
                 cached=False,
-                error=str(e)
+                error=category.value
             )
     
     async def _process_snapshot(self, snapshot: Snapshot, start_time: float) -> DescriptionResult:
         """Process snapshot with Ollama client and comprehensive error handling."""
-        try:
-            # Process frame to base64
-            base64_image = self.image_processor.process_webcam_frame(snapshot.frame)
-            
-            # Call Ollama synchronously in executor to avoid blocking the event loop
-            loop = asyncio.get_event_loop()
-            description_text = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None, 
-                    self.ollama_client.describe_image, 
-                    base64_image
-                ),
-                timeout=self.config.timeout_seconds
-            )
-            
-            processing_time = int((time.time() - start_time) * 1000)
-            
-            # Ollama client returns just the description string
-            return DescriptionResult(
-                description=description_text,
-                confidence=0.9,  # Default confidence since Ollama doesn't provide this
-                timestamp=datetime.now(),
-                processing_time_ms=processing_time,
-                cached=False
-            )
-            
-        except asyncio.TimeoutError:
-            processing_time = int((time.time() - start_time) * 1000)
-            error_msg = f"Ollama request timeout after {self.config.timeout_seconds}s"
-            logger.warning(error_msg)
-            
-            return DescriptionResult(
-                description=f"Error: {error_msg}",
-                confidence=0.0,
-                timestamp=datetime.now(),
-                processing_time_ms=processing_time,
-                cached=False,
-                error="timeout"
-            )
+        last_error = None
         
-        except OllamaError as e:
-            processing_time = int((time.time() - start_time) * 1000)
-            error_msg = f"Ollama service error: {e}"
-            logger.error(error_msg)
-            
-            return DescriptionResult(
-                description=f"Error: {error_msg}",
-                confidence=0.0,
-                timestamp=datetime.now(),
-                processing_time_ms=processing_time,
-                cached=False,
-                error="ollama_error"
-            )
+        # Determine retry policy
+        retry_policy = getattr(self.config, 'retry_policy', None)
+        max_attempts = retry_policy.max_attempts if retry_policy else self.config.retry_attempts + 1
         
-        except Exception as e:
-            processing_time = int((time.time() - start_time) * 1000)
-            error_msg = f"Unexpected processing error: {e}"
-            logger.error(error_msg, exc_info=True)
+        for attempt in range(max_attempts):
+            try:
+                # Process frame to base64
+                base64_image = self.image_processor.process_webcam_frame(snapshot.frame)
+                
+                # Create wrapper function to handle OllamaTimeoutError in executor
+                def safe_describe_image():
+                    try:
+                        return self.ollama_client.describe_image(base64_image)
+                    except OllamaTimeoutError:
+                        # Re-raise as asyncio.TimeoutError so it's caught by the outer handler
+                        raise asyncio.TimeoutError("Ollama timeout in executor")
+                    except (OllamaUnavailableError, ConnectionRefusedError, ConnectionError) as e:
+                        # Re-raise to be caught by appropriate handler
+                        raise e
+                
+                # Call Ollama synchronously in executor to avoid blocking the event loop
+                loop = asyncio.get_event_loop()
+                description_text = await asyncio.wait_for(
+                    loop.run_in_executor(None, safe_describe_image),
+                    timeout=self.config.timeout_seconds
+                )
+                
+                # Validate response if enabled
+                if self.config.validate_responses:
+                    is_valid = self.error_handler.validate_ollama_response(description_text)
+                    if not is_valid:
+                        raise OllamaMalformedResponseError(f"Invalid response: {description_text}")
+                
+                processing_time = int((time.time() - start_time) * 1000)
+                
+                # Ollama client returns just the description string
+                return DescriptionResult(
+                    description=description_text,
+                    confidence=0.9,  # Default confidence since Ollama doesn't provide this
+                    timestamp=datetime.now(),
+                    processing_time_ms=processing_time,
+                    cached=False
+                )
+                
+            except (asyncio.TimeoutError, OllamaTimeoutError, TimeoutError) as e:
+                last_error = e
+                self.error_handler.handle_error(e, context=f"_process_snapshot_attempt_{attempt + 1}")
+                
+                # Check if we should retry
+                if attempt < max_attempts - 1:
+                    # Calculate backoff delay
+                    if retry_policy:
+                        from .error_handler import ExponentialBackoff
+                        backoff = ExponentialBackoff(
+                            initial_delay=retry_policy.initial_delay,
+                            max_delay=retry_policy.max_delay,
+                            backoff_factor=retry_policy.backoff_factor
+                        )
+                        delay = backoff.get_delay(attempt)
+                    else:
+                        # Use simple exponential backoff with config parameters
+                        delay = 0.1 * (self.config.retry_backoff_factor ** attempt)
+                    
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    # Final attempt failed, return error result
+                    processing_time = int((time.time() - start_time) * 1000)
+                    
+                    if self.config.enable_fallback_descriptions:
+                        fallback_description = self.error_handler.get_fallback_description("timeout")
+                        error_description = fallback_description
+                    else:
+                        error_description = f"Error: Ollama request timeout after {self.config.timeout_seconds}s"
+                    
+                    return DescriptionResult(
+                        description=error_description,
+                        confidence=0.0,
+                        timestamp=datetime.now(),
+                        processing_time_ms=processing_time,
+                        cached=False,
+                        error="timeout"
+                    )
             
-            return DescriptionResult(
-                description=f"Error: {error_msg}",
-                confidence=0.0,
-                timestamp=datetime.now(),
-                processing_time_ms=processing_time,
-                cached=False,
-                error="processing_error"
-            )
+            except (ConnectionRefusedError, ConnectionError, OllamaUnavailableError) as e:
+                last_error = e
+                self.error_handler.handle_error(e, context=f"_process_snapshot_attempt_{attempt + 1}")
+                
+                # Check if we should retry for service unavailable
+                if retry_policy and retry_policy.is_retryable(e) and attempt < max_attempts - 1:
+                    from .error_handler import ExponentialBackoff
+                    backoff = ExponentialBackoff(
+                        initial_delay=retry_policy.initial_delay,
+                        max_delay=retry_policy.max_delay,
+                        backoff_factor=retry_policy.backoff_factor
+                    )
+                    delay = backoff.get_delay(attempt)
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    # Final attempt failed or not retryable
+                    processing_time = int((time.time() - start_time) * 1000)
+                    
+                    if self.config.enable_fallback_descriptions:
+                        fallback_description = self.error_handler.get_fallback_description("service_unavailable")
+                        error_description = fallback_description
+                    else:
+                        error_description = f"Error: Ollama service unavailable"
+                    
+                    return DescriptionResult(
+                        description=error_description,
+                        confidence=0.0,
+                        timestamp=datetime.now(),
+                        processing_time_ms=processing_time,
+                        cached=False,
+                        error="service_unavailable"
+                    )
+            
+            except OllamaError as e:
+                last_error = e
+                self.error_handler.handle_error(e, context=f"_process_snapshot_attempt_{attempt + 1}")
+                category = self.error_handler.categorize_error(e)
+                
+                # Check if we should retry
+                if retry_policy and retry_policy.is_retryable(e) and attempt < max_attempts - 1:
+                    from .error_handler import ExponentialBackoff
+                    backoff = ExponentialBackoff(
+                        initial_delay=retry_policy.initial_delay,
+                        max_delay=retry_policy.max_delay,
+                        backoff_factor=retry_policy.backoff_factor
+                    )
+                    delay = backoff.get_delay(attempt)
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    # Final attempt failed or not retryable
+                    processing_time = int((time.time() - start_time) * 1000)
+                    
+                    if self.config.enable_fallback_descriptions:
+                        fallback_description = self.error_handler.get_fallback_description(category)
+                        error_description = fallback_description
+                    else:
+                        error_description = f"Error: Ollama service error: {e}"
+                    
+                    return DescriptionResult(
+                        description=error_description,
+                        confidence=0.0,
+                        timestamp=datetime.now(),
+                        processing_time_ms=processing_time,
+                        cached=False,
+                        error=category.value
+                    )
+            
+            except Exception as e:
+                last_error = e
+                self.error_handler.handle_error(e, context=f"_process_snapshot_attempt_{attempt + 1}")
+                category = self.error_handler.categorize_error(e)
+                
+                # For unknown errors, don't retry by default unless retry policy explicitly allows it
+                if retry_policy and retry_policy.is_retryable(e) and attempt < max_attempts - 1:
+                    from .error_handler import ExponentialBackoff
+                    backoff = ExponentialBackoff(
+                        initial_delay=retry_policy.initial_delay,
+                        max_delay=retry_policy.max_delay,
+                        backoff_factor=retry_policy.backoff_factor
+                    )
+                    delay = backoff.get_delay(attempt)
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    # Final attempt failed or not retryable
+                    processing_time = int((time.time() - start_time) * 1000)
+                    
+                    if self.config.enable_fallback_descriptions:
+                        fallback_description = self.error_handler.get_fallback_description(category)
+                        error_description = fallback_description
+                    else:
+                        error_description = f"Error: Unexpected processing error: {e}"
+                    
+                    return DescriptionResult(
+                        description=error_description,
+                        confidence=0.0,
+                        timestamp=datetime.now(),
+                        processing_time_ms=processing_time,
+                        cached=False,
+                        error=category.value
+                    )
+        
+        # This should never be reached, but just in case
+        processing_time = int((time.time() - start_time) * 1000)
+        return DescriptionResult(
+            description="Error: Unexpected processing error",
+            confidence=0.0,
+            timestamp=datetime.now(),
+            processing_time_ms=processing_time,
+            cached=False,
+            error="unknown_error"
+        )
     
     def get_cache_statistics(self) -> Dict[str, Any]:
         """Get cache statistics for monitoring."""

@@ -29,8 +29,9 @@ from concurrent.futures import Future
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from .description_service import DescriptionService
+from .description_service import DescriptionService, DescriptionResult
 from .snapshot_buffer import Snapshot
+from .error_handler import OllamaTimeoutError, OllamaUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -324,7 +325,9 @@ class AsyncDescriptionProcessor:
         self,
         description_service: DescriptionService,
         max_queue_size: int = 100,
-        rate_limit_per_second: float = 0.5
+        rate_limit_per_second: float = 0.5,
+        enable_retries: bool = False,
+        max_retry_attempts: int = 2
     ):
         """
         Initialize async description processor.
@@ -333,21 +336,31 @@ class AsyncDescriptionProcessor:
             description_service: Service for processing descriptions
             max_queue_size: Maximum queue capacity
             rate_limit_per_second: Rate limit for Ollama requests
+            enable_retries: Whether to enable retry logic for failed requests
+            max_retry_attempts: Maximum number of retry attempts
         """
         if max_queue_size <= 0:
             raise ValueError("max_queue_size must be positive")
         if rate_limit_per_second <= 0:
             raise ValueError("rate_limit_per_second must be positive")
+        if max_retry_attempts < 0:
+            raise ValueError("max_retry_attempts must be non-negative")
             
         self.description_service = description_service
         self.queue = ProcessingQueue(max_size=max_queue_size)
         self.rate_limiter = RateLimiter(requests_per_second=rate_limit_per_second)
+        self.enable_retries = enable_retries
+        self.max_retry_attempts = max_retry_attempts
         
         self.is_running = False
         self._processing_task: Optional[asyncio.Task] = None
         self._result_futures: Dict[str, asyncio.Future] = {}
         
-        logger.info(f"AsyncDescriptionProcessor initialized: queue_size={max_queue_size}, rate={rate_limit_per_second}/sec")
+        logger.info(
+            f"AsyncDescriptionProcessor initialized: "
+            f"queue_size={max_queue_size}, rate={rate_limit_per_second}/sec, "
+            f"retries={'enabled' if enable_retries else 'disabled'}"
+        )
     
     async def start_processing(self) -> None:
         """Start background processing loop."""
@@ -465,49 +478,52 @@ class AsyncDescriptionProcessor:
         logger.info("Async description processing loop ended")
     
     async def _process_request(self, request: ProcessingRequest) -> None:
-        """Process a single request with rate limiting and error handling."""
+        """
+        Process a single request from the queue.
+        
+        Handles description generation, error handling, and result publishing.
+        Updates queue statistics and performance metrics.
+        """
         start_time = time.time()
         
         try:
             # Apply rate limiting
             await self.rate_limiter.acquire()
             
-            # Process with description service
-            description_result = await self.description_service.describe_snapshot(request.snapshot)
+            logger.debug(f"Processing request: {request}")
             
-            processing_time = int((time.time() - start_time) * 1000)
+            # Process description with retry logic if enabled
+            if self.enable_retries:
+                result = await self._process_with_retries(request, start_time)
+            else:
+                # Single attempt processing
+                description_result = await self.description_service.describe_snapshot(request.snapshot)
+                result = self._convert_to_processing_result(request, description_result, start_time)
             
-            # Create processing result
-            result = ProcessingResult(
-                request_id=request.request_id,
-                description=description_result.description,
-                confidence=description_result.confidence,
-                processing_time_ms=processing_time,
-                success=True
-            )
+            # Mark request completed in queue
+            processing_time_ms = int((time.time() - start_time) * 1000)
+            self.queue.mark_completed(processing_time_ms)
             
-            # Mark as completed in queue
-            self.queue.mark_completed(processing_time)
-            
-            logger.debug(f"Completed processing request: {request.request_id} in {processing_time}ms")
+            logger.debug(f"Completed processing request: {request.request_id}")
             
         except Exception as e:
-            processing_time = int((time.time() - start_time) * 1000)
+            logger.error(f"Failed processing request {request.request_id}: {e}")
+            
+            # Mark request failed in queue
+            self.queue.mark_failed()
             
             # Create error result
-            result = ProcessingResult(
+            processing_time_ms = int((time.time() - start_time) * 1000)
+            error_result = ProcessingResult(
                 request_id=request.request_id,
                 description=f"Error: {str(e)}",
                 confidence=0.0,
-                processing_time_ms=processing_time,
+                processing_time_ms=processing_time_ms,
                 success=False,
                 error=str(e)
             )
             
-            # Mark as failed in queue
-            self.queue.mark_failed()
-            
-            logger.error(f"Failed processing request {request.request_id}: {e}")
+            result = error_result
         
         # Deliver result to waiting future
         future = self._result_futures.pop(request.request_id, None)
@@ -515,7 +531,95 @@ class AsyncDescriptionProcessor:
             future.set_result(result)
         elif future and future.cancelled():
             logger.debug(f"Request {request.request_id} was cancelled before completion")
+    
+    async def _process_with_retries(self, request: ProcessingRequest, start_time: float) -> 'ProcessingResult':
+        """
+        Process request with retry logic for recoverable errors.
         
+        Args:
+            request: Processing request to handle
+            start_time: Start time for timing calculations
+            
+        Returns:
+            ProcessingResult with success/error status
+        """
+        last_error = None
+        
+        for attempt in range(self.max_retry_attempts + 1):  # +1 for initial attempt
+            try:
+                description_result = await self.description_service.describe_snapshot(request.snapshot)
+                
+                # If successful, return result immediately
+                if description_result.error is None:
+                    return self._convert_to_processing_result(request, description_result, start_time)
+                
+                # If description service returned error result, check if retryable
+                if attempt < self.max_retry_attempts:
+                    # For certain error types, we can retry
+                    if description_result.error in ["timeout", "service_unavailable"]:
+                        # Wait with exponential backoff before retry
+                        delay = 0.5 * (2 ** attempt)  # 0.5s, 1s, 2s, 4s...
+                        await asyncio.sleep(delay)
+                        continue
+                
+                # Not retryable or max attempts reached, return error result
+                return self._convert_to_processing_result(request, description_result, start_time)
+                
+            except (OllamaTimeoutError, OllamaUnavailableError) as e:
+                last_error = e
+                
+                # Check if we should retry
+                if attempt < self.max_retry_attempts:
+                    # Wait with exponential backoff before retry
+                    delay = 0.5 * (2 ** attempt)
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    # Max attempts reached, return error
+                    break
+            
+            except Exception as e:
+                # For unexpected errors, don't retry
+                last_error = e
+                break
+        
+        # If we get here, all retries failed
+        processing_time_ms = int((time.time() - start_time) * 1000)
+        return ProcessingResult(
+            request_id=request.request_id,
+            description=f"Error after {self.max_retry_attempts + 1} attempts: {str(last_error)}",
+            confidence=0.0,
+            processing_time_ms=processing_time_ms,
+            success=False,
+            error=str(last_error)
+        )
+    
+    def _convert_to_processing_result(
+        self, 
+        request: ProcessingRequest, 
+        description_result: DescriptionResult, 
+        start_time: float
+    ) -> 'ProcessingResult':
+        """
+        Convert DescriptionResult to ProcessingResult.
+        
+        Args:
+            request: Original processing request
+            description_result: Result from description service
+            start_time: Processing start time
+            
+        Returns:
+            ProcessingResult with consistent format
+        """
+        return ProcessingResult(
+            request_id=request.request_id,
+            description=description_result.description,
+            confidence=description_result.confidence,
+            processing_time_ms=description_result.processing_time_ms,
+            success=description_result.error is None,
+            error=description_result.error
+        )
+    
     def get_statistics(self) -> Dict[str, Any]:
         """Get comprehensive processing statistics."""
         return {

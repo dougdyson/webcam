@@ -35,7 +35,7 @@ A local, real-time human presence detection system using computer vision. The sy
 - **Gesture Recognition**: Stop gesture detection for voice assistant control and automation ✅ IMPLEMENTED
 - **Real-time Streaming**: SSE service for immediate gesture event distribution ✅ IMPLEMENTED
 - **Clean Console Output**: Single updating status line without scroll spam ✅ IMPLEMENTED
-- **Testable**: Full test coverage with mocked camera inputs (425 tests) ✅ ACHIEVED
+- **Testable**: Full test coverage with mocked camera inputs (540 tests) ✅ ACHIEVED
 - **Extensible**: Factory pattern for easy addition of new detection backends
 
 ## System Architecture
@@ -91,15 +91,166 @@ Detection Pipeline → EventPublisher → Service Layer
 - **GestureResult**: Standardized gesture result format with timing and metadata
 - **GestureConfig**: Gesture detection configuration and thresholds
 
-#### 6. Utils Module (`src/utils/`)
+#### 6. Ollama Module (`src/ollama/`) ✅ NEW - IMPLEMENTED
+- **OllamaClient**: HTTP client for local Ollama service integration
+- **DescriptionService**: Async description processing with caching and error handling
+- **AsyncDescriptionProcessor**: Background processing pipeline with rate limiting
+- **SnapshotBuffer**: Circular buffer for storing human-detected frames
+- **ImageProcessor**: Frame preprocessing and base64 encoding for Ollama
+- **ErrorHandler**: Comprehensive error handling with retry policies and fallback descriptions
+
+#### 7. Utils Module (`src/utils/`)
 - **ConfigManager**: YAML configuration loading and management
 - **Logger**: Structured logging setup
 - **PerformanceMonitor**: Frame rate and latency monitoring
 
-#### 7. CLI Module (`src/cli/`)
+#### 8. CLI Module (`src/cli/`)
 - **MainApp**: Primary application entry point with factory pattern integration
 - **CommandParser**: CLI argument handling with detector type selection
 - **StatusDisplay**: Real-time status output
+
+## Ollama Integration Architecture ✅ NEW - IMPLEMENTED
+
+### Overview
+The Ollama integration extends the webcam detection system with AI-powered image description capabilities using local Ollama models. This feature provides detailed descriptions of webcam snapshots when humans are detected, following TDD methodology with comprehensive error handling and resilience.
+
+### Key Components
+
+#### Ollama Client (`src/ollama/client.py`)
+- **Local Integration**: Connects to local Ollama service (default: localhost:11434)
+- **Model Support**: Configurable models (default: llama3.2-vision)
+- **Health Checking**: Service availability validation
+- **Error Handling**: Connection timeouts and service unavailability detection
+
+#### Description Service (`src/ollama/description_service.py`)
+- **Async Processing**: Non-blocking description generation
+- **Smart Caching**: MD5-based frame caching with TTL (default: 5 minutes)
+- **Concurrency Control**: Configurable semaphore limits (default: 3 concurrent)
+- **Error Resilience**: Comprehensive error handling with fallback descriptions
+- **Performance Monitoring**: Processing time tracking and cache statistics
+
+#### Async Processing Pipeline (`src/ollama/async_processor.py`)
+- **Background Processing**: Dedicated async processing loop
+- **Priority Queue**: Request prioritization with efficient ordering
+- **Rate Limiting**: Prevents Ollama overload (configurable req/sec)
+- **Future-based Results**: Async result delivery with proper cleanup
+- **Statistics Tracking**: Queue performance and processing metrics
+
+#### Snapshot Management (`src/ollama/snapshot_buffer.py`)
+- **Circular Buffer**: Memory-efficient frame storage (configurable size)
+- **Human-triggered**: Only stores frames when humans detected
+- **Thread-safe**: Concurrent access from detection and processing threads
+- **Metadata Tracking**: Confidence, timestamp, and detection source information
+
+#### Error Handling & Resilience (`src/ollama/error_handler.py`)
+- **Error Categorization**: SERVICE_UNAVAILABLE, TIMEOUT, MALFORMED_RESPONSE, etc.
+- **Retry Policies**: Configurable exponential backoff with jitter
+- **Fallback Descriptions**: Graceful degradation when Ollama unavailable
+- **Response Validation**: Strict validation to detect malformed responses
+- **Metrics & Logging**: Comprehensive error tracking and structured logging
+
+### Ollama Processing Pipeline
+```
+Human Detection → Snapshot Trigger → Buffer Storage → Description Queue → Ollama Processing → Result Caching
+       ↓               ↓                  ↓                  ↓                  ↓               ↓
+   Confidence       Debounced         Circular           Priority          Rate Limited    TTL Cache
+   Threshold        Trigger           Buffer             Queue             Processing      (5 min)
+   (default         (3 frames)        (50 frames)        (async)          (0.5 req/sec)   (MD5 keys)
+   0.7)
+```
+
+### Configuration Management
+
+#### Ollama Configuration (`config/ollama_config.yaml`)
+```yaml
+ollama:
+  base_url: "http://localhost:11434"
+  model: "llama3.2-vision"
+  timeout_seconds: 30.0
+  max_retries: 2
+  
+description_service:
+  cache_ttl_seconds: 300
+  max_concurrent_requests: 3
+  enable_caching: true
+  enable_fallback_descriptions: true
+  
+async_processor:
+  max_queue_size: 100
+  rate_limit_per_second: 0.5
+  enable_retries: false
+  
+snapshot_buffer:
+  max_size: 50
+  min_confidence_threshold: 0.7
+  debounce_frames: 3
+```
+
+### Error Handling Strategies
+
+#### Service Unavailability
+- **Detection**: Connection refused, timeout errors
+- **Response**: Fallback description: "Description service temporarily unavailable"
+- **Retry**: Exponential backoff up to configured max attempts
+- **Metrics**: Track unavailability events for monitoring
+
+#### Timeout Handling
+- **Detection**: Request exceeds configured timeout (default: 30s)
+- **Response**: Fallback description: "Description generation timeout, taking longer than expected"
+- **Retry**: Configurable retry attempts with backoff
+- **Performance**: Processing time tracking for optimization
+
+#### Malformed Response Detection
+- **Validation**: Content length, JSON structure, expected fields
+- **Response**: Fallback description: "Unable to generate description due to processing error"
+- **Recovery**: Automatic retry for recoverable response errors
+- **Logging**: Detailed error logging for debugging
+
+### Performance Characteristics
+
+#### Processing Performance
+- **Initialization**: <2s for Ollama client and description service setup
+- **Description Generation**: 10-30s depending on model and image complexity
+- **Cache Performance**: <1ms for cache hits (MD5-based key lookup)
+- **Queue Processing**: <50ms overhead for request queuing and prioritization
+
+#### Memory Management
+- **Snapshot Buffer**: Fixed circular buffer prevents memory growth
+- **Description Cache**: LRU eviction with configurable max entries (default: 100)
+- **Request Futures**: Automatic cleanup of completed/cancelled requests
+- **Image Processing**: Temporary base64 encoding with immediate cleanup
+
+#### Scalability
+- **Concurrent Requests**: Configurable semaphore limits prevent resource exhaustion
+- **Rate Limiting**: Protects Ollama service from overload
+- **Background Processing**: Non-blocking async pipeline preserves real-time detection
+- **Resource Isolation**: Ollama failures don't impact core detection functionality
+
+### Integration Points
+
+#### HTTP API Extension (Future - Phase 4)
+```python
+# New endpoint for description retrieval
+@app.get("/description/latest")
+async def get_latest_description():
+    """Get the most recent snapshot description."""
+    # Implementation in Phase 4
+    pass
+```
+
+#### Event System Integration (Future - Phase 5)
+```python
+# New event types for description processing
+class EventType(Enum):
+    DESCRIPTION_GENERATED = "description_generated"
+    DESCRIPTION_FAILED = "description_failed"
+    DESCRIPTION_CACHED = "description_cached"
+```
+
+#### Configuration Integration (Future - Phase 6)
+- **Enhanced WebcamService**: Integration with existing service startup
+- **Unified Configuration**: Ollama settings in main configuration system
+- **Service Dependencies**: Proper lifecycle management and health checks
 
 ## Service Layer Implementation ✅
 
@@ -319,10 +470,24 @@ webcam/
 │   │   ├── queue.py            # FrameQueue
 │   │   ├── processor.py        # FrameProcessor
 │   │   └── filter.py           # PresenceFilter with weighted voting
-│   ├── service/                # ✅ NEW SERVICE LAYER
+│   ├── service/                # ✅ SERVICE LAYER
 │   │   ├── __init__.py         # Service exports
 │   │   ├── events.py           # EventPublisher, ServiceEvent, EventType
 │   │   └── http_service.py     # HTTPDetectionService (Production Ready)
+│   ├── gesture/                # ✅ GESTURE RECOGNITION
+│   │   ├── __init__.py
+│   │   ├── hand_detection.py   # MediaPipe hands integration
+│   │   ├── classification.py   # Hand up gesture algorithm
+│   │   ├── result.py          # GestureResult dataclass
+│   │   └── config.py          # Gesture configuration
+│   ├── ollama/                 # ✅ NEW - OLLAMA INTEGRATION
+│   │   ├── __init__.py
+│   │   ├── client.py          # OllamaClient (HTTP client)
+│   │   ├── description_service.py  # DescriptionService (async processing)
+│   │   ├── async_processor.py  # AsyncDescriptionProcessor (background pipeline)
+│   │   ├── snapshot_buffer.py  # SnapshotBuffer (circular buffer)
+│   │   ├── image_processing.py # OllamaImageProcessor (frame preprocessing)
+│   │   └── error_handler.py   # OllamaErrorHandler (comprehensive error handling)
 │   ├── utils/
 │   │   ├── __init__.py
 │   │   ├── config.py           # ConfigManager
@@ -336,18 +501,28 @@ webcam/
 ├── config/
 │   ├── camera_profiles.yaml    # Camera settings
 │   ├── detection_config.yaml   # Detection parameters
+│   ├── ollama_config.yaml      # ✅ NEW - Ollama integration settings
 │   └── app_config.yaml         # General app settings
 ├── docs/                       # Reference samples and documentation
-├── tests/                      # ✅ 425 TESTS PASSING
+├── tests/                      # ✅ 540 TESTS PASSING
 │   ├── __init__.py
 │   ├── test_camera/
 │   ├── test_detection/         # Including multimodal tests
 │   ├── test_processing/
-│   ├── test_service/           # ✅ NEW - 35 service layer tests
+│   ├── test_service/           # ✅ Service layer tests (35 tests)
 │   │   ├── __init__.py
 │   │   ├── test_events.py      # EventPublisher tests (15 tests)
 │   │   ├── test_http_service.py # HTTP API tests (15 tests)
 │   │   └── test_guard_clause_integration.py # Integration tests (5 tests)
+│   ├── test_gesture/           # ✅ Gesture recognition tests
+│   ├── test_ollama/            # ✅ NEW - Ollama integration tests (129 tests)
+│   │   ├── __init__.py
+│   │   ├── test_client.py      # OllamaClient tests
+│   │   ├── test_description_service.py  # DescriptionService tests
+│   │   ├── test_async_processing.py     # AsyncDescriptionProcessor tests
+│   │   ├── test_snapshot_buffer.py      # SnapshotBuffer tests
+│   │   ├── test_image_processing.py     # Image processing tests
+│   │   └── test_error_handling.py       # Error handling tests
 │   ├── test_integration/       # Integration test scenarios
 │   └── fixtures/               # Test images/videos
 ├── data/                       # Logs, temporary files
@@ -356,7 +531,7 @@ webcam/
 ├── .env.example
 ├── ARCHITECTURE.md             # This file
 ├── TDD_PLAN.md                 # Development plan
-├── TDD_PLAN_SERVICE_LAYER.md   # Service layer development plan
+├── TDD_OLLAMA_DESCRIPTION_PLAN.md  # ✅ NEW - Ollama development plan
 ├── MULTIMODAL_IMPLEMENTATION_SUMMARY.md # Implementation details
 └── README.md
 ```
@@ -506,10 +681,12 @@ def setup_speaker_verification_integration():
 
 ## Testing Strategy
 
-### Comprehensive Test Coverage (425 Tests) ✅
+### Comprehensive Test Coverage (540 Tests) ✅
 - **Unit Tests**: Individual component functionality
 - **Integration Tests**: End-to-end pipeline testing
 - **Service Layer Tests**: HTTP API, event system, and integration patterns
+- **Gesture Recognition Tests**: Hand detection, gesture classification, and SSE integration
+- **Ollama Integration Tests**: Client, description service, async processing, error handling
 - **Multi-Modal Tests**: Detector fusion and factory pattern
 - **Performance Tests**: Load testing and resource management
 - **Practical Error Handling**: Basic camera reconnection and realistic failure scenarios
@@ -519,20 +696,33 @@ def setup_speaker_verification_integration():
 - **Detection system tests**: 23 multimodal + 23 mediapipe + 21 base
 - **Processing pipeline tests**: 28 presence filter + 19 frame processor
 - **Service layer tests**: 15 events + 15 HTTP service + 5 integration + 21 webcam service ✅ IMPLEMENTED
+- **Gesture recognition tests**: 94 tests ✅ IMPLEMENTED
+- **Ollama integration tests**: 129 tests ✅ NEW - IMPLEMENTED
 - **Integration tests**: 22 main app + 4 integration scenarios
 - **CLI interface tests**: 21 tests
 
-### Service Layer Testing ✅ IMPLEMENTED
-- **Event System Tests**: EventPublisher, ServiceEvent, error isolation
-- **HTTP API Tests**: All endpoints, CORS, configuration validation
-- **Integration Tests**: Guard clause patterns, performance, real-time updates
-- **Performance Tests**: 50 requests in <1 second validation
-- **Error Handling**: Service failures, network timeouts, graceful fallbacks
-- **Production Integration**: EnhancedWebcamService connects real camera detection to HTTP API
+### Ollama Integration Testing ✅ NEW - IMPLEMENTED
+- **Client Tests**: Connection handling, health checks, model communication
+- **Description Service Tests**: Async processing, caching, error resilience
+- **Async Processor Tests**: Queue management, rate limiting, background processing
+- **Snapshot Buffer Tests**: Circular buffer, thread safety, metadata tracking
+- **Image Processing Tests**: Frame preprocessing, base64 encoding, optimization
+- **Error Handling Tests**: Timeout handling, retry policies, fallback descriptions
 
 ---
 
 ## Change Log
+
+### Version 4.0 (Ollama Integration) ✅ NEW - IMPLEMENTED
+- **AI-Powered Descriptions**: Local Ollama model integration for image description
+- **Snapshot Management**: Circular buffer system for human-detected frames
+- **Async Processing Pipeline**: Background description processing with rate limiting
+- **Error Resilience**: Comprehensive error handling with retry policies and fallback descriptions
+- **Smart Caching**: MD5-based frame caching with configurable TTL (5 minutes)
+- **Performance Optimization**: Concurrent processing limits and memory management
+- **TDD Methodology**: Strict test-driven development with 129 comprehensive tests
+- **Production Ready**: Fail-safe design with graceful degradation
+- **Configuration-Driven**: Fully configurable Ollama settings and processing parameters
 
 ### Version 3.1 (Project Structure Cleanup) ✅ IMPLEMENTED
 - **Root Directory Cleanup**: Moved test files, debug tools, and legacy code to proper directories
@@ -857,38 +1047,3 @@ sse_service:
 
 #### New Components
 ```
-src/
-├── gesture/                     # NEW: Gesture detection module
-│   ├── __init__.py
-│   ├── hand_detection.py        # MediaPipe hands integration
-│   ├── classification.py       # Hand up gesture algorithm
-│   ├── result.py               # GestureResult dataclass  
-│   └── config.py               # Gesture configuration
-├── detection/
-│   ├── gesture_detector.py      # NEW: Main gesture detector
-│   └── ...existing files
-├── service/
-│   ├── sse_service.py          # NEW: Server-Sent Events service
-│   └── ...existing files
-└── ...existing structure
-
-config/
-├── gesture_config.yaml          # NEW: Gesture detection settings
-├── sse_config.yaml             # NEW: SSE service settings
-└── ...existing configs
-
-tests/
-├── test_gesture/               # NEW: Gesture detection tests
-│   ├── test_hand_detection.py
-│   ├── test_classification.py
-│   ├── test_gesture_detector.py
-│   └── test_gesture_result.py
-├── test_service/
-│   ├── test_sse_service.py     # NEW: SSE service tests
-│   └── ...existing tests
-└── test_integration/
-    ├── test_gesture_sse_integration.py # NEW: End-to-end tests
-    └── ...existing tests
-```
-
---- 

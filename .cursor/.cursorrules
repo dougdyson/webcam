@@ -84,6 +84,26 @@
 - **Error Isolation**: Service failures should not impact core detection functionality
 - **Testing Strategy**: Mock service endpoints for integration testing, avoid network dependencies in tests
 
+# Ollama Integration Development (Implemented)
+- **Local Processing**: All Ollama communication happens with local service (default: localhost:11434)
+- **TDD Methodology**: Follow strict Red→Green→Refactor for all Ollama components
+- **Error Resilience**: Comprehensive error handling with retry policies and fallback descriptions
+- **Async Processing**: Background processing pipeline with rate limiting to prevent Ollama overload
+- **Smart Caching**: MD5-based frame caching with configurable TTL to avoid redundant processing
+- **Configuration-Driven**: All Ollama settings configurable via YAML (models, timeouts, retry policies)
+- **Performance First**: Processing only triggered when humans detected, with concurrent request limits
+- **Graceful Degradation**: System continues functioning when Ollama unavailable
+- **Memory Management**: Circular buffers and proper cleanup to prevent memory leaks
+- **Snapshot Management**: Human-triggered frame storage with metadata tracking
+
+# Ollama Component Patterns
+- **OllamaClient**: HTTP client for local Ollama service communication
+- **DescriptionService**: Async description processing with caching and error handling
+- **AsyncDescriptionProcessor**: Background processing pipeline with priority queues
+- **SnapshotBuffer**: Thread-safe circular buffer for human-detected frames
+- **ErrorHandler**: Comprehensive error categorization and retry strategies
+- **Image Processing**: Frame preprocessing and optimization for Ollama models
+
 # Service Communication Patterns
 - **WebSocket Service**: Real-time bidirectional for interactive applications
   - Connection management with client metadata and subscription filtering
@@ -122,7 +142,7 @@
   - `src/cli/` - Command-line interface with detector selection
   - `config/` - Configuration files
   - `docs/` - reference and samples
-  - `tests/` - Test files (414 comprehensive tests)
+  - `tests/` - Test files (540 comprehensive tests)
     - `test_integration/` - Integration test scenarios
   - `data/` - Sample data, logs, or temporary files
 - Prioritize modularity and clear separation of concerns.
@@ -148,8 +168,8 @@
 - Use pytest for testing and ensure test filenames are unique across the project.
 - Mock camera inputs for testing detection algorithms.
 - Test different lighting conditions and scenarios with sample images/videos.
-- **Comprehensive Testing**: Maintain 414 tests covering all components and integration scenarios
-- **Test Categories**: Unit tests, integration tests, multi-modal detection tests, CLI tests
+- **Comprehensive Testing**: Maintain 540 tests covering all components and integration scenarios
+- **Test Categories**: Unit tests, integration tests, multi-modal detection tests, Ollama integration tests, CLI tests
 - **Test Isolation**: Use proper mocking to avoid pytest interference with SystemExit and similar issues
 - **Factory Pattern Testing**: Test detector registration, creation, and type validation
 

@@ -217,7 +217,10 @@ class TestDescriptionServiceAsyncProcessing:
         mock_image_processor = Mock(spec=OllamaImageProcessor)
         mock_image_processor.process_webcam_frame.return_value = "base64_encoded_image"
         
-        config = DescriptionServiceConfig(timeout_seconds=5.0)
+        config = DescriptionServiceConfig(
+            timeout_seconds=5.0,
+            enable_fallback_descriptions=False  # Use Error: prefix instead of fallback descriptions
+        )
         service = DescriptionService(
             ollama_client=mock_ollama_client,
             image_processor=mock_image_processor,
