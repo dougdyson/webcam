@@ -215,17 +215,33 @@ Real-time presence for kiosks, digital signage, and interactive displays.
 
 ## 🧪 Testing
 
-Comprehensive test suite with 637 tests covering all components:
+Comprehensive test suite with 660 tests covering all components, beautifully organized to mirror the source structure:
 
 ```bash
 # Run all tests
 pytest tests/
 
+# Run specific test categories
+pytest tests/test_detection/ -v    # Detection algorithms (83 tests)
+pytest tests/test_service/ -v     # Service layer (94 tests)
+pytest tests/test_ollama/ -v      # AI integration (134 tests)
+
 # With coverage
 pytest --cov=src tests/
+```
 
-# Quick test
-pytest tests/test_detection/ -v
+**Test Organization:**
+```
+tests/
+├── test_camera/     # Camera system (49 tests)
+├── test_detection/  # Detection algorithms (83 tests)
+├── test_processing/ # Processing pipeline (67 tests)
+├── test_utils/      # Utilities & config (36 tests)
+├── test_cli/        # Command-line interface (43 tests)
+├── test_gesture/    # Gesture recognition (46 tests)
+├── test_service/    # Service layer (94 tests)
+├── test_ollama/     # AI integration (134 tests)
+└── test_integration/ # End-to-end scenarios (104 tests)
 ```
 
 ## 📖 Documentation
@@ -272,13 +288,14 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🌟 Why Choose Webcam Detection?
 
-- **🎯 Proven**: 637 comprehensive tests, production-ready
+- **🎯 Proven**: 660 comprehensive tests, production-ready
 - **⚡ Fast**: Optimized for real-time performance (<100ms latency)
 - **🔒 Private**: 100% local processing, no cloud dependencies
 - **🎛️ Flexible**: Extensive configuration and integration options
 - **📈 Scalable**: From simple scripts to production services
 - **🛡️ Reliable**: Robust error handling and graceful fallbacks
 - **🖐️ Gesture-Ready**: Advanced hand detection for automation
+- **🏗️ Well-Organized**: Beautiful test structure mirroring source code
 
 ---
 

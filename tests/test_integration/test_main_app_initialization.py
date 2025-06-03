@@ -16,14 +16,18 @@ from src.detection.result import DetectionResult
 class TestMainAppInitializationIntegration:
     """Integration tests for MainApp initialization and component coordination."""
 
+    @patch('src.detection.base.DetectorFactory.list_available')  # Mock the validation
     @patch('src.cli.main.create_detector')  # Updated to use factory pattern
     @patch('src.cli.main.CameraManager')
     @patch('src.cli.main.FrameQueue')
     @patch('src.cli.main.FrameProcessor')
     @patch('src.cli.main.PresenceFilter')
     def test_detector_is_properly_initialized(self, mock_filter, mock_processor,
-                                            mock_queue, mock_camera, mock_create_detector):
+                                            mock_queue, mock_camera, mock_create_detector, mock_list_available):
         """Should properly initialize detector with correct configuration."""
+        # Setup detector list mock to allow multimodal
+        mock_list_available.return_value = ['mediapipe', 'multimodal', 'pose', 'pose_face']
+        
         # Setup mocks
         mock_detector_instance = Mock()
         mock_create_detector.return_value = mock_detector_instance
@@ -45,14 +49,18 @@ class TestMainAppInitializationIntegration:
         # Verify detector is accessible
         assert app.detector is mock_detector_instance
 
+    @patch('src.detection.base.DetectorFactory.list_available')  # Mock the validation
     @patch('src.cli.main.create_detector')
     @patch('src.cli.main.CameraManager')
     @patch('src.cli.main.FrameQueue')
     @patch('src.cli.main.FrameProcessor')
     @patch('src.cli.main.PresenceFilter')
     def test_complete_initialization_chain(self, mock_filter, mock_processor,
-                                         mock_queue, mock_camera, mock_create_detector):
+                                         mock_queue, mock_camera, mock_create_detector, mock_list_available):
         """Should initialize complete component chain correctly."""
+        # Setup detector list mock to allow multimodal
+        mock_list_available.return_value = ['mediapipe', 'multimodal', 'pose', 'pose_face']
+        
         # Setup mock detector
         mock_detector_instance = Mock()
         mock_create_detector.return_value = mock_detector_instance
@@ -86,14 +94,18 @@ class TestMainAppInitializationIntegration:
         assert processor_kwargs['frame_queue'] is mock_queue_instance
         assert processor_kwargs['detector'] is mock_detector_instance
 
+    @patch('src.detection.base.DetectorFactory.list_available')  # Mock the validation
     @patch('src.cli.main.create_detector')  # Updated to use factory pattern
     @patch('src.cli.main.CameraManager')
     @patch('src.cli.main.FrameQueue')
     @patch('src.cli.main.FrameProcessor')
     @patch('src.cli.main.PresenceFilter')
     def test_initialization_failure_cleanup(self, mock_filter, mock_processor,
-                                           mock_queue, mock_camera, mock_create_detector):
+                                           mock_queue, mock_camera, mock_create_detector, mock_list_available):
         """Should handle initialization failures gracefully."""
+        # Setup detector list mock to allow multimodal
+        mock_list_available.return_value = ['mediapipe', 'multimodal', 'pose', 'pose_face']
+        
         # Setup detector mock to succeed
         mock_detector_instance = Mock()
         mock_create_detector.return_value = mock_detector_instance
@@ -109,14 +121,18 @@ class TestMainAppInitializationIntegration:
         assert "Failed to initialize application components" in str(exc_info.value)
         assert exc_info.value.original_error is not None
 
+    @patch('src.detection.base.DetectorFactory.list_available')  # Mock the validation
     @patch('src.cli.main.create_detector')  # Updated to use factory pattern
     @patch('src.cli.main.CameraManager')
     @patch('src.cli.main.FrameQueue')
     @patch('src.cli.main.FrameProcessor')
     @patch('src.cli.main.PresenceFilter')
     def test_real_frame_processing_pipeline(self, mock_filter, mock_processor,
-                                          mock_queue, mock_camera, mock_create_detector):
+                                          mock_queue, mock_camera, mock_create_detector, mock_list_available):
         """Should coordinate frame processing through complete pipeline."""
+        # Setup detector list mock to allow multimodal
+        mock_list_available.return_value = ['mediapipe', 'multimodal', 'pose', 'pose_face']
+        
         # Setup detector with realistic behavior
         mock_detector_instance = Mock()
         mock_create_detector.return_value = mock_detector_instance
