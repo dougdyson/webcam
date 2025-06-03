@@ -50,6 +50,7 @@ from src.utils.config import ConfigManager
 from src.ollama.client import OllamaClient, OllamaConfig
 from src.ollama.description_service import DescriptionService
 from src.ollama.image_processing import OllamaImageProcessor
+from src.ollama.snapshot_buffer import Snapshot, SnapshotMetadata
 
 # Configure logging to be quieter
 logging.basicConfig(level=logging.WARNING, format='%(message)s')  # Only warnings and errors
@@ -293,12 +294,30 @@ class EnhancedWebcamService:
                     # NEW: Process frame for AI description (Phase 6.2)
                     if human_result.human_present and human_result.confidence > 0.6 and self.description_service:
                         try:
-                            # Process frame for description
-                            description_result = self.description_service.describe_snapshot(frame)
+                            # Create proper Snapshot object for description service
+                            snapshot_metadata = SnapshotMetadata(
+                                timestamp=datetime.now(),
+                                confidence=human_result.confidence,
+                                human_present=human_result.human_present,
+                                detection_source="multimodal"
+                            )
+                            snapshot = Snapshot(frame=frame, metadata=snapshot_metadata)
                             
-                            if description_result and hasattr(description_result, 'success') and description_result.success:
-                                # Description processing successful
-                                logger.debug(f"Description generated: {description_result.description}")
+                            # Process snapshot for description asynchronously from sync thread
+                            # Use asyncio to handle the async call properly
+                            import asyncio
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            try:
+                                description_result = loop.run_until_complete(
+                                    self.description_service.describe_snapshot(snapshot)
+                                )
+                                
+                                if description_result and hasattr(description_result, 'success') and description_result.success:
+                                    # Description processing successful
+                                    logger.debug(f"Description generated: {description_result.description}")
+                            finally:
+                                loop.close()
                             
                         except Exception as e:
                             logger.debug(f"Description processing error: {e}")  # Don't break detection loop
@@ -455,8 +474,22 @@ class EnhancedWebcamService:
                 # Step 2: Conditional description processing (only if human present with sufficient confidence)
                 if detection_result.human_present and detection_result.confidence > 0.6 and self.description_service:
                     try:
-                        # Process frame for description
-                        description_result = self.description_service.describe_snapshot(frame)
+                        # FIX: Create proper Snapshot object instead of passing raw frame
+                        snapshot_metadata = SnapshotMetadata(
+                            timestamp=datetime.now(),
+                            confidence=detection_result.confidence,
+                            human_present=detection_result.human_present,
+                            detection_source="multimodal"
+                        )
+                        snapshot = Snapshot(frame=frame, metadata=snapshot_metadata)
+                        
+                        # Process snapshot for description (this should be sync for testing)
+                        # Use asyncio.run for clean async handling in sync context
+                        import asyncio
+                        description_result = asyncio.run(
+                            self.description_service.describe_snapshot(snapshot)
+                        )
+                        
                         results["description_called"] = True
                         results["description_result"] = description_result
                         

@@ -305,7 +305,10 @@ class DescriptionService:
         self._event_publishing_stats = {
             'events_published': 0,
             'publishing_errors': 0,
-            'last_published': None
+            'last_published': None,
+            'total_publish_time_ms': 0.0,
+            'average_publish_time_ms': 0.0,
+            'retry_attempts': 0
         }
         
         # Latest description tracking for HTTP API integration
