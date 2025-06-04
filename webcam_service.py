@@ -237,50 +237,18 @@ class WebcamService:
             self.ollama_image_processor = None
     
     def detection_loop(self):
-        """Main detection loop - SIMPLIFIED like debug script."""        
+        """Main detection loop - Latest Frame processing (Phase 5 cleanup)."""        
         last_status_print = 0
         detection_count = 0
         fps_target = 15
         frame_time = 1.0 / fps_target
-        
-        # NEW: Background description processing queue to prevent interference
-        description_queue = []
-        
-        def process_description_background():
-            """Background thread for description processing to prevent blocking."""
-            while self.is_running:
-                if description_queue and self.description_service:
-                    try:
-                        frame, metadata = description_queue.pop(0)
-                        snapshot = Snapshot(frame=frame, metadata=metadata)
-                        
-                        # Process in isolated event loop
-                        import asyncio
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        try:
-                            description_result = loop.run_until_complete(
-                                self.description_service.describe_snapshot(snapshot)
-                            )
-                            if description_result and hasattr(description_result, 'success') and description_result.success:
-                                logger.debug(f"Background description generated: {description_result.description[:50]}...")
-                        finally:
-                            loop.close()
-                    except Exception as e:
-                        logger.debug(f"Background description error: {e}")
-                time.sleep(0.1)  # Small delay to prevent busy waiting
-        
-        # Start background description processing thread
-        if self.description_service:
-            description_thread = threading.Thread(target=process_description_background, daemon=True)
-            description_thread.start()
         
         while self.is_running and not self._shutdown_requested:
             try:
                 # Get frame from camera
                 frame = self.camera.get_frame()
                 if frame is not None:
-                    # NEW: Use Latest Frame Processor instead of direct detection (Phase 3.1)
+                    # Latest Frame processing (Phase 3.1)
                     human_result = self.latest_frame_processor.process_frame(frame)
                     detection_count += 1
                     
@@ -328,17 +296,6 @@ class WebcamService:
                                 except Exception as e:
                                     logger.debug(f"Event publishing error: {e}")  # Use logger instead of print
                     
-                    # NEW: Queue frame for background description processing (NON-BLOCKING)
-                    if human_result.human_present and human_result.confidence > 0.6 and self.description_service:
-                        if len(description_queue) < 3:  # Limit queue size to prevent memory issues
-                            snapshot_metadata = SnapshotMetadata(
-                                timestamp=datetime.now(),
-                                confidence=human_result.confidence,
-                                human_present=human_result.human_present,
-                                detection_source="multimodal"
-                            )
-                            description_queue.append((frame.copy(), snapshot_metadata))  # Copy frame to avoid issues
-                    
                     # Update HTTP service status (simple)
                     if self.http_service:
                         self.http_service.current_status.human_present = human_result.human_present
@@ -352,7 +309,7 @@ class WebcamService:
                         status = "👤 HUMAN" if human_result.human_present else "❌ NO HUMAN"
                         # Clean gesture display with current status
                         gesture_display = f"{gesture_status} ({gesture_confidence:.2f})" if gesture_confidence > 0 else gesture_status
-                        # NEW: Show Latest Frame status instead of queue status (Phase 3.2)
+                        # Latest Frame status display (Phase 3.2)
                         latest_frame_status = " | ⚡ LATEST FRAME"
                         print(f"\r{status} | Conf: {human_result.confidence:.2f} | Gesture: {gesture_display} | Frames: {detection_count} | FPS: {fps_target}{latest_frame_status}", end='', flush=True)
                         last_status_print = current_time
