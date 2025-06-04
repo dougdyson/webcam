@@ -33,4 +33,24 @@ class LatestFrameProcessor:
     def stop(self):
         """Stop the processor."""
         self.is_running = False
-        logger.info("LatestFrameProcessor stopped") 
+        logger.info("LatestFrameProcessor stopped")
+    
+    def process_frame(self, frame):
+        """
+        Process a single frame using the detector.
+        
+        This method provides the same interface as direct detector calls
+        but goes through the Latest Frame Processor for consistency.
+        
+        Args:
+            frame: Frame to process
+            
+        Returns:
+            Detection result from the detector
+        """
+        if self.detector is None:
+            raise RuntimeError("Detector not initialized")
+            
+        # For now, just pass through to the detector
+        # This maintains compatibility while we migrate
+        return self.detector.detect(frame) 

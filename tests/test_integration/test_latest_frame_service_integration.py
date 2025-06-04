@@ -5,7 +5,8 @@ This module tests the integration of Latest Frame Processor with the service lay
 following TDD methodology for the Queue → Latest Frame migration.
 """
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
+import numpy as np
 
 
 class TestLatestFrameProcessorServiceIntegration:
@@ -61,4 +62,71 @@ class TestLatestFrameProcessorServiceIntegration:
         
         # Now check that latest_frame_processor is properly initialized
         assert service.latest_frame_processor is not None, \
-            "latest_frame_processor should be initialized after initialize() call" 
+            "latest_frame_processor should be initialized after initialize() call"
+    
+    def test_detection_loop_uses_latest_frame_processor(self):
+        """
+        RED: Test that detection loop uses Latest Frame Processor instead of direct detector calls.
+        
+        Phase 3.1 RED step: This will fail because detection_loop still uses direct detector calls.
+        """
+        from webcam_service import WebcamService
+        
+        # Create service instance with mocked components
+        service = WebcamService()
+        
+        # Mock the camera and detector to avoid real initialization
+        service.camera = Mock()
+        service.detector = Mock()
+        service.latest_frame_processor = Mock()
+        service.gesture_detector = Mock()  # NEW: Mock gesture detector to avoid NoneType errors
+        
+        # Mock frame from camera
+        mock_frame = np.random.randint(0, 255, (240, 320, 3), dtype=np.uint8)
+        service.camera.get_frame.return_value = mock_frame
+        
+        # Mock Latest Frame Processor detection result
+        mock_detection_result = Mock()
+        mock_detection_result.human_present = True
+        mock_detection_result.confidence = 0.75
+        service.latest_frame_processor.process_frame.return_value = mock_detection_result
+        
+        # Mock gesture detection to return None (no gesture)
+        service.gesture_detector.detect_gestures.return_value = None
+        
+        # Set service as running for single iteration with quick exit
+        service.is_running = True
+        service._shutdown_requested = False
+        
+        # Use a counter to stop after a few iterations
+        call_counter = [0]
+        original_get_frame = service.camera.get_frame
+        
+        def limited_get_frame():
+            call_counter[0] += 1
+            if call_counter[0] > 2:  # Stop after 2 frames
+                service.is_running = False
+                return None
+            return original_get_frame()
+        
+        service.camera.get_frame = limited_get_frame
+        
+        # Mock time.sleep to avoid actual delays
+        with patch('time.sleep'):
+            with patch('time.time', return_value=0):  # Fixed time to avoid status printing
+                # Run detection loop for limited iterations
+                try:
+                    service.detection_loop()
+                except Exception:
+                    pass  # Expected since we'll break the loop
+        
+        # Verify Latest Frame Processor was called (at least once)
+        assert service.latest_frame_processor.process_frame.call_count >= 1, \
+            f"Latest Frame Processor should be called at least once, was called {service.latest_frame_processor.process_frame.call_count} times"
+        
+        # Verify it was called with frame data
+        calls = service.latest_frame_processor.process_frame.call_args_list
+        assert len(calls) > 0, "Latest Frame Processor should have been called with frame data"
+        
+        # Verify direct detector was NOT called
+        service.detector.detect.assert_not_called() 

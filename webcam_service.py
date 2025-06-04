@@ -280,8 +280,8 @@ class WebcamService:
                 # Get frame from camera
                 frame = self.camera.get_frame()
                 if frame is not None:
-                    # SIMPLIFIED: Direct detection like debug script
-                    human_result = self.detector.detect(frame)
+                    # NEW: Use Latest Frame Processor instead of direct detection (Phase 3.1)
+                    human_result = self.latest_frame_processor.process_frame(frame)
                     detection_count += 1
                     
                     # Gesture detection with clean status tracking
