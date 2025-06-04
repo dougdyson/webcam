@@ -39,6 +39,7 @@ from src.detection.gesture_detector import GestureDetector
 from src.camera import CameraManager
 from src.camera.config import CameraConfig
 from src.processing.enhanced_frame_processor import EnhancedFrameProcessor, EnhancedProcessorConfig
+from src.processing.latest_frame_processor import LatestFrameProcessor
 
 # Service layer
 from src.service.http_service import HTTPDetectionService, HTTPServiceConfig
@@ -72,6 +73,7 @@ class WebcamService:
         self.detector = None
         self.gesture_detector = None
         self.frame_processor = None
+        self.latest_frame_processor = None  # NEW: Latest Frame Processor for migration
         self.event_publisher = EventPublisher()
         
         # Services
@@ -108,6 +110,12 @@ class WebcamService:
             # Step 4: Initialize gesture detector
             self.gesture_detector = GestureDetector()
             self.gesture_detector.initialize()
+            
+            # Step 4.5: Initialize Latest Frame Processor (NEW - Phase 2.2)
+            self.latest_frame_processor = LatestFrameProcessor(
+                camera_manager=self.camera,
+                detector=self.detector
+            )
             
             # Step 5: Initialize Ollama components
             try:
@@ -218,6 +226,7 @@ class WebcamService:
             self.detector = None
             self.gesture_detector = None
             self.frame_processor = None
+            self.latest_frame_processor = None  # NEW: Clean up Latest Frame Processor
             self.http_service = None
             self.sse_service = None
             # Reset Ollama components
@@ -445,6 +454,7 @@ class WebcamService:
         self.gesture_detector = None
         self.detector = None
         self.camera = None
+        self.latest_frame_processor = None  # NEW: Clean up Latest Frame Processor
         
         logger.info("✅ Enhanced service shutdown complete")
     
