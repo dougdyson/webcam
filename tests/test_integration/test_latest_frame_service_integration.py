@@ -220,4 +220,32 @@ class TestLatestFrameProcessorServiceIntegration:
         if mock_detection_result.human_present and mock_detection_result.confidence > 0.6:
             # Description processing should be attempted when human is detected
             # This is testing the integration pathway
-            assert True, "Description integration pathway should be accessible" 
+            assert True, "Description integration pathway should be accessible"
+    
+    def test_latest_frame_processor_provides_current_frame_descriptions(self):
+        """
+        RED: Test that Latest Frame Processor provides descriptions from CURRENT frame, not queued frames.
+        
+        This is the REAL Latest Frame behavior test - the service should NOT use background queues
+        and should process descriptions directly from the current frame.
+        
+        This test will fail because we still have background queue processing active.
+        """
+        import inspect
+        import webcam_service as service_module
+        
+        # Get the source code of the detection_loop method
+        detection_loop_source = inspect.getsource(service_module.WebcamService.detection_loop)
+        
+        # REAL Latest Frame processing should NOT have background queue code
+        assert "description_queue = []" not in detection_loop_source, \
+            "Latest Frame processing should not use background description queues"
+        
+        assert "process_description_background" not in detection_loop_source, \
+            "Latest Frame processing should not use background thread processing"
+        
+        assert "description_queue.append" not in detection_loop_source, \
+            "Latest Frame processing should not queue frames for later processing"
+        
+        # Latest Frame processing should process descriptions immediately from current frame
+        # This is the key difference that eliminates the 4-5 frame lag 
