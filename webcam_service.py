@@ -352,9 +352,9 @@ class WebcamService:
                         status = "👤 HUMAN" if human_result.human_present else "❌ NO HUMAN"
                         # Clean gesture display with current status
                         gesture_display = f"{gesture_status} ({gesture_confidence:.2f})" if gesture_confidence > 0 else gesture_status
-                        desc_queue_size = len(description_queue)
-                        desc_status = f" | 🤖 Queue: {desc_queue_size}" if desc_queue_size > 0 else ""
-                        print(f"\r{status} | Conf: {human_result.confidence:.2f} | Gesture: {gesture_display} | Frames: {detection_count} | FPS: {fps_target}{desc_status}", end='', flush=True)
+                        # NEW: Show Latest Frame status instead of queue status (Phase 3.2)
+                        latest_frame_status = " | ⚡ LATEST FRAME"
+                        print(f"\r{status} | Conf: {human_result.confidence:.2f} | Gesture: {gesture_display} | Frames: {detection_count} | FPS: {fps_target}{latest_frame_status}", end='', flush=True)
                         last_status_print = current_time
                     
                     time.sleep(frame_time)

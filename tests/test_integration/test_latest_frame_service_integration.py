@@ -7,6 +7,7 @@ following TDD methodology for the Queue → Latest Frame migration.
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 import numpy as np
+from io import StringIO
 
 
 class TestLatestFrameProcessorServiceIntegration:
@@ -129,4 +130,24 @@ class TestLatestFrameProcessorServiceIntegration:
         assert len(calls) > 0, "Latest Frame Processor should have been called with frame data"
         
         # Verify direct detector was NOT called
-        service.detector.detect.assert_not_called() 
+        service.detector.detect.assert_not_called()
+    
+    def test_detection_loop_displays_latest_frame_status(self):
+        """
+        RED: Test that detection loop displays "⚡ LATEST FRAME" status instead of queue info.
+        
+        Phase 3.2 RED step: This will fail because status still shows queue processing.
+        """
+        import inspect
+        import webcam_service as service_module
+        
+        # Get the source code of the detection_loop method
+        service_source = inspect.getsource(service_module.WebcamService.detection_loop)
+        
+        # Should contain Latest Frame status display
+        assert "⚡ LATEST FRAME" in service_source, \
+            "Detection loop should display '⚡ LATEST FRAME' status"
+        
+        # Should NOT contain queue status display
+        assert "🤖 Queue:" not in service_source, \
+            "Detection loop should not display queue status" 
