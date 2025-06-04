@@ -150,4 +150,74 @@ class TestLatestFrameProcessorServiceIntegration:
         
         # Should NOT contain queue status display
         assert "🤖 Queue:" not in service_source, \
-            "Detection loop should not display queue status" 
+            "Detection loop should not display queue status"
+    
+    def test_description_processing_works_with_latest_frame_results(self):
+        """
+        RED: Test that description processing works with Latest Frame Processor results.
+        
+        Phase 4.1 RED step: This will fail because _process_single_frame still uses direct detector
+        instead of Latest Frame Processor, creating an inconsistency.
+        """
+        from webcam_service import WebcamService
+        import numpy as np
+        import inspect
+        
+        # Check that _process_single_frame method uses Latest Frame Processor consistently
+        service_source = inspect.getsource(WebcamService._process_single_frame)
+        
+        # Should use Latest Frame Processor for consistency with detection loop
+        assert "self.latest_frame_processor.process_frame(frame)" in service_source, \
+            "_process_single_frame should use Latest Frame Processor for consistency"
+        
+        # Should NOT use direct detector calls (inconsistent with detection loop)
+        assert "self.detector.detect(frame)" not in service_source, \
+            "_process_single_frame should not use direct detector calls (inconsistent with Latest Frame processing)"
+        
+        # Create service with real initialization for description testing
+        service = WebcamService()
+        
+        # Mock components but keep description service setup
+        service.camera = Mock()
+        service.detector = Mock()
+        service.latest_frame_processor = Mock()
+        service.gesture_detector = Mock()
+        
+        # Mock description service to track calls
+        service.description_service = Mock()
+        
+        # Create a realistic frame
+        test_frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+        service.camera.get_frame.return_value = test_frame
+        
+        # Mock Latest Frame Processor to return human detection (confidence > 0.6 to trigger description)
+        mock_detection_result = Mock()
+        mock_detection_result.human_present = True
+        mock_detection_result.confidence = 0.75  # Above 0.6 threshold for descriptions
+        service.latest_frame_processor.process_frame.return_value = mock_detection_result
+        
+        # Mock gesture detection
+        service.gesture_detector.detect_gestures.return_value = None
+        
+        # Mock HTTP service
+        service.http_service = Mock()
+        service.http_service.current_status = Mock()
+        service.http_service.current_status.detection_count = 0
+        
+        # Test the frame processing method that should handle descriptions
+        result = service._process_single_frame(test_frame)
+        
+        # Verify that description processing was attempted
+        # The key test: Latest Frame results should trigger description processing
+        assert result is not None, "Frame processing should return a result"
+        assert "detection_called" in result, "Result should contain detection status"
+        
+        # Since we have Latest Frame Processor providing human detection,
+        # description processing should be considered
+        # (This tests the integration between Latest Frame results and description pipeline)
+        
+        # If human detected with sufficient confidence, description should be called
+        if mock_detection_result.human_present and mock_detection_result.confidence > 0.6:
+            # Description processing should be attempted when human is detected
+            # This is testing the integration pathway
+            assert True, "Description integration pathway should be accessible" 

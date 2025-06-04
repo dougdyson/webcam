@@ -484,9 +484,9 @@ class WebcamService:
         }
         
         try:
-            # Step 1: Human detection
-            if self.detector:
-                detection_result = self.detector.detect(frame)
+            # Step 1: Human detection (NEW: Use Latest Frame Processor for consistency - Phase 4.1)
+            if self.latest_frame_processor:
+                detection_result = self.latest_frame_processor.process_frame(frame)
                 results["detection_called"] = True
                 results["human_detected"] = detection_result.human_present
                 results["confidence"] = detection_result.confidence
