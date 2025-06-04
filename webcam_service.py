@@ -237,19 +237,29 @@ class WebcamService:
             self.ollama_image_processor = None
     
     def detection_loop(self):
-        """Main detection loop - REAL Latest Frame processing with immediate descriptions."""        
+        """Main detection loop - Latest Frame processing with wait-for-completion descriptions."""        
         last_status_print = 0
         detection_count = 0
         fps_target = 15
         frame_time = 1.0 / fps_target
+        
+        # Configure Latest Frame Processor for wait-for-completion Ollama processing
+        if self.description_service:
+            self.latest_frame_processor.set_description_service(self.description_service)
         
         while self.is_running and not self._shutdown_requested:
             try:
                 # Get frame from camera
                 frame = self.camera.get_frame()
                 if frame is not None:
-                    # Latest Frame processing (Phase 3.1)
-                    human_result = self.latest_frame_processor.process_frame(frame)
+                    # Latest Frame processing with wait-for-completion descriptions (Phase 3.1 + Fixed)
+                    if self.description_service:
+                        # Use wait-for-completion approach - no thread explosion
+                        human_result = self.latest_frame_processor.process_frame_with_description(frame)
+                    else:
+                        # Fallback to simple detection if no Ollama
+                        human_result = self.latest_frame_processor.process_frame(frame)
+                    
                     detection_count += 1
                     
                     # Gesture detection with clean status tracking
@@ -296,44 +306,6 @@ class WebcamService:
                                 except Exception as e:
                                     logger.debug(f"Event publishing error: {e}")  # Use logger instead of print
                     
-                    # REAL Latest Frame: Process descriptions immediately from CURRENT frame
-                    if human_result.human_present and human_result.confidence > 0.6 and self.description_service:
-                        try:
-                            # Create snapshot from CURRENT frame (not queued frame)
-                            snapshot_metadata = SnapshotMetadata(
-                                timestamp=datetime.now(),
-                                confidence=human_result.confidence,
-                                human_present=human_result.human_present,
-                                detection_source="latest_frame"  # Mark as Latest Frame processing
-                            )
-                            snapshot = Snapshot(frame=frame.copy(), metadata=snapshot_metadata)
-                            
-                            # Process description immediately in background (non-blocking but current frame)
-                            import threading
-                            def process_current_frame_description():
-                                """Process description from current frame immediately."""
-                                try:
-                                    import asyncio
-                                    loop = asyncio.new_event_loop()
-                                    asyncio.set_event_loop(loop)
-                                    try:
-                                        description_result = loop.run_until_complete(
-                                            self.description_service.describe_snapshot(snapshot)
-                                        )
-                                        if description_result and hasattr(description_result, 'success') and description_result.success:
-                                            logger.debug(f"Latest Frame description: {description_result.description[:50]}...")
-                                    finally:
-                                        loop.close()
-                                except Exception as e:
-                                    logger.debug(f"Latest Frame description error: {e}")
-                            
-                            # Start immediate processing of current frame (not queued)
-                            desc_thread = threading.Thread(target=process_current_frame_description, daemon=True)
-                            desc_thread.start()
-                            
-                        except Exception as e:
-                            logger.debug(f"Latest Frame processing error: {e}")
-                    
                     # Update HTTP service status (simple)
                     if self.http_service:
                         self.http_service.current_status.human_present = human_result.human_present
@@ -347,8 +319,9 @@ class WebcamService:
                         status = "👤 HUMAN" if human_result.human_present else "❌ NO HUMAN"
                         # Clean gesture display with current status
                         gesture_display = f"{gesture_status} ({gesture_confidence:.2f})" if gesture_confidence > 0 else gesture_status
-                        # Latest Frame status display (Phase 3.2)
-                        latest_frame_status = " | ⚡ LATEST FRAME"
+                        # Latest Frame status with Ollama processing indicator
+                        ollama_status = "🔄" if (self.description_service and self.latest_frame_processor.is_description_processing()) else "⚡"
+                        latest_frame_status = f" | {ollama_status} LATEST FRAME"
                         print(f"\r{status} | Conf: {human_result.confidence:.2f} | Gesture: {gesture_display} | Frames: {detection_count} | FPS: {fps_target}{latest_frame_status}", end='', flush=True)
                         last_status_print = current_time
                     
