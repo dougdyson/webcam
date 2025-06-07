@@ -49,7 +49,7 @@ from src.service.events import EventPublisher
 # Ollama integration (NEW - Phase 6.2)
 from src.utils.config import ConfigManager
 from src.ollama.client import OllamaClient, OllamaConfig
-from src.ollama.description_service import DescriptionService
+from src.ollama.description_service import DescriptionService, DescriptionServiceConfig
 from src.ollama.image_processing import OllamaImageProcessor
 from src.ollama.snapshot_buffer import Snapshot, SnapshotMetadata
 
@@ -132,10 +132,25 @@ class WebcamService:
                 # Initialize OllamaImageProcessor
                 self.ollama_image_processor = OllamaImageProcessor()
                 
-                # Initialize DescriptionService with all required parameters
+                # Load room layout for enhanced descriptions
+                room_layout = self._load_room_layout()
+                
+                # Create enhanced configuration with room context
+                description_config = DescriptionServiceConfig(
+                    room_layout_context=room_layout,
+                    use_room_context=True,
+                    cache_ttl_seconds=300,
+                    enable_caching=True,
+                    timeout_seconds=30.0,
+                    enable_fallback_descriptions=True,
+                    retry_attempts=2
+                )
+                
+                # Initialize DescriptionService with enhanced configuration
                 self.description_service = DescriptionService(
                     ollama_client=self.ollama_client,
-                    image_processor=self.ollama_image_processor
+                    image_processor=self.ollama_image_processor,
+                    config=description_config
                 )
                 
                 # NEW: Setup event publisher integration for description events (Phase 6.2)
@@ -508,6 +523,24 @@ class WebcamService:
         
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
+
+    def _load_room_layout(self):
+        """Load room layout configuration from file for enhanced descriptions."""
+        try:
+            from pathlib import Path
+            layout_file = Path(__file__).parent / "config" / "room_layout.txt"
+            
+            if layout_file.exists():
+                with open(layout_file, 'r') as f:
+                    room_layout = f.read().strip()
+                    logger.info(f"✅ Room layout loaded ({len(room_layout)} chars)")
+                    return room_layout
+            else:
+                logger.warning(f"⚠️ Room layout file not found at {layout_file}")
+                return ""
+        except Exception as e:
+            logger.error(f"❌ Error loading room layout: {e}")
+            return ""
 
 def main():
     """Main entry point."""

@@ -56,12 +56,17 @@ class DescriptionServiceConfig:
     Follows existing service configuration patterns for consistency.
     Enhanced with comprehensive error handling and resilience features.
     Phase 7.2: Enhanced with proper exponential backoff timing and stress recovery.
+    Enhanced with room-specific context and improved prompting for any room type.
     """
     cache_ttl_seconds: int = 300  # 5 minutes
     max_concurrent_requests: int = 3
     timeout_seconds: float = 30.0
     max_cache_entries: int = 100
     enable_caching: bool = True
+    
+    # Enhanced prompting system for room context (any room type)
+    room_layout_context: str = ""
+    use_room_context: bool = True
     default_prompt: str = "Describe what you see in this image. Be concise and specific."
     
     # Error handling and resilience options
@@ -77,6 +82,29 @@ class DescriptionServiceConfig:
     enable_stress_recovery: bool = True
     stress_failure_threshold: float = 0.5  # 50% failure rate indicates stress
     stress_backoff_multiplier: float = 2.0  # Additional backoff during stress
+    
+    def get_enhanced_prompt(self) -> str:
+        """
+        Generate context-aware prompt for webcam descriptions of any room type.
+        
+        Returns a structured prompt that focuses on activities, objects, and spatial
+        relationships. Uses room layout reference for reliable color and spatial context
+        rather than attempting color detection from the image. Designed for use
+        as context in conversational AI interactions.
+        """
+        if not self.use_room_context:
+            return self.default_prompt
+        
+        base_prompt = """Describe what you see in this webcam. Be concise and specific. Ignore colors. Describe how Duggy looks. What clothing are they wearing (no colors)? What objects are present?"""
+        
+#         if self.room_layout_context:
+#             base_prompt += f"ROOM LAYOUT REFERENCE:\n{self.room_layout_context}\n\n"
+        
+#         base_prompt += """Format your response as: "Currently: [brief activity description]. Present: [people/objects]. Location details: [spatial info]."
+
+# IMPORTANT: Do NOT attempt to identify colors from the image as they are unreliable. Instead, use the room layout reference above for any color information needed for object identification. Focus on what would be useful context for a conversation."""
+        
+        return base_prompt
     
     def __post_init__(self):
         """Validate configuration parameters."""
@@ -103,6 +131,7 @@ class DescriptionResult:
     
     Contains description text, confidence, timing, and metadata.
     Designed for HTTP API integration following existing patterns.
+    Enhanced with room layout context for conversational AI integration.
     """
     description: str
     confidence: float
@@ -110,6 +139,7 @@ class DescriptionResult:
     processing_time_ms: int
     cached: bool = False
     error: Optional[str] = None
+    room_layout: Optional[str] = None  # Room layout context for AI integration
     
     @property
     def success(self) -> bool:
@@ -125,7 +155,8 @@ class DescriptionResult:
             'processing_time_ms': self.processing_time_ms,
             'cached': self.cached,
             'error': self.error,
-            'success': self.success
+            'success': self.success,
+            'room_layout': self.room_layout
         }
 
 
@@ -187,7 +218,8 @@ class DescriptionCache:
             timestamp=entry.result.timestamp,
             processing_time_ms=entry.result.processing_time_ms,
             cached=True,
-            error=entry.result.error
+            error=entry.result.error,
+            room_layout=entry.result.room_layout
         )
         logger.debug(f"Cache hit for key: {key[:8]}...")
         return cached_result
@@ -594,7 +626,8 @@ class DescriptionService:
                 timestamp=datetime.now(),
                 processing_time_ms=processing_time,
                 cached=False,
-                error=category.value
+                error=category.value,
+                room_layout=self.config.room_layout_context
             )
             
             # Phase 7.2: Update stress metrics for exceptions
@@ -622,7 +655,9 @@ class DescriptionService:
                 # Create wrapper function to handle OllamaTimeoutError in executor
                 def safe_describe_image():
                     try:
-                        return self.ollama_client.describe_image(base64_image)
+                        # Use enhanced prompt from configuration
+                        enhanced_prompt = self.config.get_enhanced_prompt()
+                        return self.ollama_client.describe_image(base64_image, prompt=enhanced_prompt)
                     except OllamaTimeoutError:
                         # Re-raise as asyncio.TimeoutError so it's caught by the outer handler
                         raise asyncio.TimeoutError("Ollama timeout in executor")
@@ -651,7 +686,8 @@ class DescriptionService:
                     confidence=0.9,  # Default confidence since Ollama doesn't provide this
                     timestamp=datetime.now(),
                     processing_time_ms=processing_time,
-                    cached=False
+                    cached=False,
+                    room_layout=self.config.room_layout_context
                 )
                 
                 # Update latest description
@@ -698,7 +734,8 @@ class DescriptionService:
                         timestamp=datetime.now(),
                         processing_time_ms=processing_time,
                         cached=False,
-                        error="timeout"
+                        error="timeout",
+                        room_layout=self.config.room_layout_context
                     )
                     
                     # Update latest description
@@ -737,7 +774,8 @@ class DescriptionService:
                         timestamp=datetime.now(),
                         processing_time_ms=processing_time,
                         cached=False,
-                        error="service_unavailable"
+                        error="service_unavailable",
+                        room_layout=self.config.room_layout_context
                     )
                     
                     # Update latest description
@@ -777,7 +815,8 @@ class DescriptionService:
                         timestamp=datetime.now(),
                         processing_time_ms=processing_time,
                         cached=False,
-                        error=category.value
+                        error=category.value,
+                        room_layout=self.config.room_layout_context
                     )
                     
                     # Update latest description
@@ -817,7 +856,8 @@ class DescriptionService:
                         timestamp=datetime.now(),
                         processing_time_ms=processing_time,
                         cached=False,
-                        error=category.value
+                        error=category.value,
+                        room_layout=self.config.room_layout_context
                     )
                     
                     # Update latest description
@@ -833,7 +873,8 @@ class DescriptionService:
             timestamp=datetime.now(),
             processing_time_ms=processing_time,
             cached=False,
-            error="unknown_error"
+            error="unknown_error",
+            room_layout=self.config.room_layout_context
         )
         
         # Update latest description

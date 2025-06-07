@@ -299,14 +299,7 @@ class HTTPDetectionService:
                     )
                 
                 # Successful description response
-                response_data = {
-                    "success": True,
-                    "description": description_result.description,
-                    "confidence": getattr(description_result, 'confidence', 1.0),
-                    "timestamp": description_result.timestamp.isoformat() if hasattr(description_result.timestamp, 'isoformat') else str(description_result.timestamp),
-                    "processing_time_ms": getattr(description_result, 'processing_time_ms', 0),
-                    "cached": getattr(description_result, 'cached', False)
-                }
+                response_data = description_result.to_dict()
                 
                 # Add enhanced cache metadata
                 cache_age_seconds = getattr(description_result, 'cache_age_seconds', 0)

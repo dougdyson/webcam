@@ -1,0 +1,45 @@
+ROOM LAYOUT REFERENCE:
+======================
+
+ROOM TYPE: Kitchen
+
+MAIN AREAS:
+	•	Left Counter & Stove Area: Standard white electric stove (white) with four coil burners, oven door (white with glass window), and left-side counter cluttered with cooking supplies (dark bottle, red-capped container, other bottles), bananas (yellow), and a blue cutting board.
+	•	Refrigerator Zone: Tall refrigerator (white) directly next to stove, with magnets or stickers on the front door, stacked with paper bags and miscellaneous items on top.
+	•	Right Counter & Sink Area: Long right-side counter (white) with a dish rack filled with clean dishes (black dish rack with various plates, pans, and a red lid), utensils, soap bottle (light blue), green silicone mat, and dark blue potholder.
+	•	Back Hallway Entrance: Narrow hallway or doorway in center-rear of image leading to another room (likely bathroom, partially visible toilet and bathtub) with hanging clothing or towels on the left side of doorway.
+
+COMMON OBJECTS & THEIR TYPICAL LOCATIONS:
+	•	Cutting board: Blue, on stove-side counter
+	•	Dish rack: Right counter, near sink (black wire rack)
+	•	Various clean dishes: In dish rack (black, silver, red, etc.)
+	•	Soap bottle: Right counter near sink (light blue)
+	•	Paper towel roll: Behind dish rack on right counter
+	•	Hanging clothes/towels: On hook or rack to left side of doorway (plaid brown/cream scarf and dark garments)
+	•	Air Fryer: Bottom right counter near the edge of image (white/black appliance)
+
+COLOR REFERENCE FOR IDENTIFICATION:
+	•	Cabinets: Off-white/light cream (upper and lower)
+	•	Countertops: White laminate
+	•	Stove: White enamel
+	•	Refrigerator: White
+	•	Dish rack: Black metal wire
+	•	Walls: Light mustard (under warm lighting)
+	•	Floor: Patterened linoleum, light beige with patterns
+	•	Hanging scarf: Brown, cream, and black plaid
+	•	Dish soap bottle: Light blue plastic
+
+SPATIAL REFERENCES:
+	•	“Left” = toward stove and refrigerator
+	•	“Right” = toward sink and dish rack counter
+	•	“Front/Forward” = toward doorway and hallway leading to back room (bathroom)
+	•	“Back/Rear” = the hallway and back room (bathroom area)
+	•	“Center” = approximate line of sight between stove and sink counters
+
+TYPICAL ACTIVITIES BY LOCATION:
+	•	Cooking: Stove area (left counter and stove)
+	•	Food prep: Left counter (near cutting board and stove)
+	•	Cleaning: Sink area and right counter
+	•	Dish drying: Right counter dish rack
+	•	Storage access: Refrigerator zone (left side near stove)
+	•	Transition to bathroom: Through central hallway doorway

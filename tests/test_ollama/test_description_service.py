@@ -197,7 +197,10 @@ class TestDescriptionServiceAsyncProcessing:
         
         # Verify Ollama client was called
         mock_image_processor.process_webcam_frame.assert_called_once_with(frame)
-        mock_ollama_client.describe_image.assert_called_once_with("base64_encoded_image")
+        
+        # Verify enhanced prompt is being used (this is the key change)
+        expected_prompt = service.config.get_enhanced_prompt()
+        mock_ollama_client.describe_image.assert_called_once_with("base64_encoded_image", prompt=expected_prompt)
         
         # Verify result content
         assert result.description == "Person standing at desk, typing on laptop"

@@ -14,7 +14,8 @@ import cv2
 import numpy as np
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add project root to Python path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.camera import CameraManager, CameraConfig
 from src.detection import create_detector
