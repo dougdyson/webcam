@@ -131,12 +131,12 @@ def draw_shoulder_reference(image, pose_landmarks):
     return image
 
 def draw_gesture_status(image, gesture_result, human_result):
-    """Draw gesture detection status overlay."""
+    """Draw gesture detection status overlay with detailed debug info."""
     h, w = image.shape[:2]
     
-    # Background for text
+    # Background for text - make it bigger for more info
     overlay = image.copy()
-    cv2.rectangle(overlay, (10, 10), (400, 220), (0, 0, 0), -1)
+    cv2.rectangle(overlay, (10, 10), (500, 300), (0, 0, 0), -1)
     cv2.addWeighted(overlay, 0.7, image, 0.3, 0, image)
     
     y_offset = 30
@@ -149,12 +149,22 @@ def draw_gesture_status(image, gesture_result, human_result):
     
     y_offset += line_height
     
-    # Gesture detection status with different colors for different types
+    # Gesture detection status with ALL MediaPipe gesture colors
     if gesture_result and gesture_result.gesture_detected:
-        if gesture_result.gesture_type == "stop":
-            color = (0, 255, 0)  # Green for stop gesture
-        elif gesture_result.gesture_type == "peace":
-            color = (0, 255, 255)  # Yellow for peace sign
+        if gesture_result.gesture_type == "Open_Palm":
+            color = (0, 255, 0)  # Green for Open_Palm gesture (MediaPipe default)
+        elif gesture_result.gesture_type == "Victory":
+            color = (0, 255, 255)  # Yellow for Victory sign (MediaPipe default)
+        elif gesture_result.gesture_type == "Thumb_Up":
+            color = (255, 255, 0)  # Cyan for Thumbs Up
+        elif gesture_result.gesture_type == "Thumb_Down":
+            color = (0, 0, 255)  # Red for Thumbs Down
+        elif gesture_result.gesture_type == "Closed_Fist":
+            color = (128, 0, 128)  # Purple for Closed Fist
+        elif gesture_result.gesture_type == "Pointing_Up":
+            color = (255, 165, 0)  # Orange for Pointing Up
+        elif gesture_result.gesture_type == "ILoveYou":
+            color = (255, 192, 203)  # Pink for I Love You
         else:
             color = (255, 255, 255)  # White for other gestures
             
@@ -171,7 +181,7 @@ def draw_gesture_status(image, gesture_result, human_result):
         
         y_offset += line_height
         
-        # Hand position
+        # Hand position and detailed finger info
         if hasattr(gesture_result, 'position'):
             pos = gesture_result.position
             pos_text = f"Hand: ({pos.get('hand_x', 0):.2f}, {pos.get('hand_y', 0):.2f})"
@@ -179,16 +189,101 @@ def draw_gesture_status(image, gesture_result, human_result):
             
             y_offset += line_height
             
-            # Finger count (NEW)
+            # Finger count with detailed breakdown
             if 'extended_fingers' in pos:
                 finger_count = pos['extended_fingers']
-                finger_text = f"Fingers: {finger_count}"
-                finger_color = (0, 255, 255) if finger_count == 2 else (0, 255, 0) if finger_count >= 3 else (0, 0, 255)
+                finger_text = f"Fingers Extended: {finger_count}/5"
+                
+                # Color based on finger count for gesture classification
+                if finger_count == 0:
+                    finger_color = (128, 0, 128)  # Purple - likely Closed_Fist
+                elif finger_count == 1:
+                    finger_color = (255, 165, 0)  # Orange - likely Pointing_Up or Thumb
+                elif finger_count == 2:
+                    finger_color = (0, 255, 255)  # Yellow - likely Victory
+                elif finger_count >= 3:
+                    finger_color = (0, 255, 0)  # Green - likely Open_Palm
+                else:
+                    finger_color = (255, 255, 255)  # White - unknown
+                    
                 cv2.putText(image, finger_text, (20, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, finger_color, 2)
+                
+                y_offset += line_height
+                
+                # Show individual finger states
+                if 'fingers' in pos:
+                    fingers = pos['fingers']
+                    finger_status = []
+                    finger_names = ['T', 'I', 'M', 'R', 'P']  # Thumb, Index, Middle, Ring, Pinky
+                    finger_keys = ['thumb', 'index', 'middle', 'ring', 'pinky']
+                    
+                    for name, key in zip(finger_names, finger_keys):
+                        if fingers.get(key, False):
+                            finger_status.append(f"{name}✓")
+                        else:
+                            finger_status.append(f"{name}✗")
+                    
+                    finger_detail = "Fingers: " + " ".join(finger_status)
+                    cv2.putText(image, finger_detail, (20, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 2)
+                    y_offset += line_height
+                
+                # Show what gesture SHOULD be detected based on finger pattern
+                expected_gesture = "Unknown"
+                if 'fingers' in pos:
+                    fingers = pos['fingers']
+                    if finger_count == 0:
+                        expected_gesture = "Should be: Closed_Fist"
+                    elif finger_count == 1:
+                        if fingers.get('thumb'):
+                            expected_gesture = "Should be: Thumb_Up/Down"
+                        elif fingers.get('index'):
+                            expected_gesture = "Should be: Pointing_Up"
+                        else:
+                            expected_gesture = "Should be: Single finger gesture"
+                    elif finger_count == 2:
+                        if fingers.get('index') and fingers.get('middle'):
+                            expected_gesture = "Should be: Victory"
+                        else:
+                            expected_gesture = "Should be: Two finger gesture"
+                    elif finger_count == 3:
+                        if (fingers.get('thumb') and fingers.get('index') and fingers.get('pinky') and
+                            not fingers.get('middle') and not fingers.get('ring')):
+                            expected_gesture = "Should be: ILoveYou"
+                        else:
+                            expected_gesture = "Should be: Open_Palm"
+                    elif finger_count >= 4:
+                        expected_gesture = "Should be: Open_Palm"
+                else:
+                    if finger_count == 0:
+                        expected_gesture = "Should be: Closed_Fist"
+                    elif finger_count == 1:
+                        expected_gesture = "Should be: Pointing_Up or Thumb"
+                    elif finger_count == 2:
+                        expected_gesture = "Should be: Victory"
+                    elif finger_count >= 3:
+                        expected_gesture = "Should be: Open_Palm"
+                
+                cv2.putText(image, expected_gesture, (20, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 2)
+                y_offset += line_height
     else:
         color = (0, 0, 255)
-        text = "Gesture: NONE"
+        text = "Gesture: NONE (Unknown)"
         cv2.putText(image, text, (20, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+        y_offset += line_height
+        
+        # Show debug info for why no gesture was detected
+        debug_text = "Reasons: Check shoulder pos, palm facing, arm geometry"
+        cv2.putText(image, debug_text, (20, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (150, 150, 150), 1)
+    
+    # Add instruction text at bottom
+    y_offset = h - 60
+    instruction_color = (255, 255, 255)
+    cv2.putText(image, "Try: Open Palm, Victory, Thumbs Up/Down, Fist, Point Up, I Love You", 
+                (20, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, instruction_color, 1)
+    cv2.putText(image, "Currently detecting: Open_Palm (3+ fingers), Victory (2 fingers)", 
+                (20, y_offset + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 200, 200), 1)
+    cv2.putText(image, "Need to add: Closed_Fist, Pointing_Up, Thumbs, ILoveYou detection!", 
+                (20, y_offset + 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 200), 1)
     
     return image
 

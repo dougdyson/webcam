@@ -554,11 +554,16 @@ class GestureClassifier:
                            pose_landmarks, 
                            palm_normal_vector: np.ndarray) -> GestureResult:
         """
-        Comprehensive gesture detection that classifies multiple gesture types.
+        Comprehensive gesture detection that classifies ALL 8 MediaPipe gesture types.
         
         Returns MediaPipe default gesture names:
         - "Open_Palm": Open palm gesture (3+ fingers, above shoulders, proper position)
-        - "Victory": Victory/Peace sign (exactly 2 fingers extended)
+        - "Victory": Victory/Peace sign (exactly 2 fingers extended: index + middle)
+        - "Closed_Fist": Closed fist (0 fingers extended)
+        - "Pointing_Up": Index finger pointing up (1 finger extended: index)
+        - "Thumb_Up": Thumbs up (1 finger extended: thumb)
+        - "Thumb_Down": Thumbs down (1 finger extended: thumb, palm away)
+        - "ILoveYou": ASL I Love You (3 fingers: thumb + index + pinky)
         - "Unknown": No recognized gesture
         
         Args:
@@ -581,61 +586,97 @@ class GestureClassifier:
         hand_center_y = self._get_hand_center_y(hand_landmarks)
         hand_center_x = hand_landmarks[9].x if len(hand_landmarks) > 9 else 0.5
         
-        # Check basic position requirements (above shoulders, palm facing camera)
+        # Check basic position requirements for most gestures
         is_above_shoulder = hand_center_y < (shoulder_reference_y - self.shoulder_offset_threshold)
         palm_z_component = palm_normal_vector[2] if isinstance(palm_normal_vector, np.ndarray) and palm_normal_vector.size == 3 else 0
         is_palm_facing_camera = palm_z_component >= self.palm_facing_confidence
         
-        # If basic requirements not met, no gesture
-        if not (is_above_shoulder and is_palm_facing_camera):
-            return GestureResult("Unknown", 0.0)
-        
-        # Check arm geometry (not behind head, proper extension)
-        is_proper_arm_geometry = self._validate_stop_gesture_arm_geometry(hand_landmarks, pose_landmarks)
-        if not is_proper_arm_geometry:
-            return GestureResult("Unknown", 0.0)
-        
-        # Count extended fingers to determine gesture type
-        extended_fingers = self._count_extended_fingers(hand_landmarks)
-        
         position_info = {
             "hand_x": hand_center_x,
             "hand_y": hand_center_y,
-            "extended_fingers": extended_fingers
+            "palm_z": palm_z_component
         }
         
-        # Classify gesture based on finger count - using MediaPipe defaults
-        if extended_fingers >= 3:
-            # Open palm gesture (MediaPipe default: "Open_Palm")
-            confidence = self.calculate_gesture_confidence(hand_landmarks, shoulder_reference_y, palm_normal_vector)
-            return GestureResult("Open_Palm", confidence, position_info)
+        # Get detailed finger analysis
+        finger_analysis = self._analyze_finger_pattern(hand_landmarks)
+        position_info.update(finger_analysis)
         
-        elif extended_fingers == 2:
-            # Victory/Peace sign (MediaPipe default: "Victory")
-            confidence = min(0.9, max(0.6, palm_z_component))  # High confidence for clear victory signs
+        # GESTURE CLASSIFICATION - Enhanced for all 8 MediaPipe gestures
+        
+        # 1. CLOSED_FIST: No fingers extended
+        if finger_analysis["extended_fingers"] == 0:
+            # Closed fist doesn't need palm facing camera or high position
+            confidence = 0.9 if is_above_shoulder else 0.7
+            return GestureResult("Closed_Fist", confidence, position_info)
+        
+        # 2. POINTING_UP: Only index finger extended
+        elif (finger_analysis["extended_fingers"] == 1 and 
+              finger_analysis["fingers"]["index"] and 
+              is_above_shoulder):
+            confidence = 0.9 if is_palm_facing_camera else 0.7
+            return GestureResult("Pointing_Up", confidence, position_info)
+        
+        # 3. THUMB_UP: Only thumb extended, palm facing camera
+        elif (finger_analysis["extended_fingers"] == 1 and 
+              finger_analysis["fingers"]["thumb"] and 
+              is_palm_facing_camera):
+            confidence = 0.9
+            return GestureResult("Thumb_Up", confidence, position_info)
+        
+        # 4. THUMB_DOWN: Only thumb extended, palm facing away
+        elif (finger_analysis["extended_fingers"] == 1 and 
+              finger_analysis["fingers"]["thumb"] and 
+              not is_palm_facing_camera):
+            confidence = 0.8
+            return GestureResult("Thumb_Down", confidence, position_info)
+        
+        # 5. VICTORY: Index + middle fingers extended
+        elif (finger_analysis["extended_fingers"] == 2 and
+              finger_analysis["fingers"]["index"] and 
+              finger_analysis["fingers"]["middle"] and
+              is_above_shoulder and is_palm_facing_camera):
+            confidence = min(0.9, max(0.6, palm_z_component))
             return GestureResult("Victory", confidence, position_info)
         
-        else:
-            # Other gestures (pointing, fist, etc.) - not currently supported
-            return GestureResult("Unknown", 0.0)
-
-    def _count_extended_fingers(self, hand_landmarks: List[Any]) -> int:
-        """
-        Count the number of extended fingers in the hand.
+        # 6. ILOVEYOU: Thumb + index + pinky extended (ASL I Love You)
+        elif (finger_analysis["extended_fingers"] == 3 and
+              finger_analysis["fingers"]["thumb"] and 
+              finger_analysis["fingers"]["index"] and 
+              finger_analysis["fingers"]["pinky"] and
+              not finger_analysis["fingers"]["middle"] and
+              not finger_analysis["fingers"]["ring"]):
+            confidence = 0.9 if (is_above_shoulder and is_palm_facing_camera) else 0.7
+            return GestureResult("ILoveYou", confidence, position_info)
         
-        Args:
-            hand_landmarks: List of hand landmark objects (MediaPipe format)
-            
+        # 7. OPEN_PALM: 3+ fingers extended (but not ILoveYou pattern)
+        elif (finger_analysis["extended_fingers"] >= 3 and
+              is_above_shoulder and is_palm_facing_camera):
+            # Check arm geometry for open palm
+            is_proper_arm_geometry = self._validate_stop_gesture_arm_geometry(hand_landmarks, pose_landmarks)
+            if is_proper_arm_geometry:
+                confidence = self.calculate_gesture_confidence(hand_landmarks, shoulder_reference_y, palm_normal_vector)
+                return GestureResult("Open_Palm", confidence, position_info)
+        
+        # 8. UNKNOWN: No recognized pattern
+        return GestureResult("Unknown", 0.0, position_info)
+
+    def _analyze_finger_pattern(self, hand_landmarks: List[Any]) -> Dict:
+        """
+        Analyze detailed finger extension patterns for accurate gesture classification.
+        
         Returns:
-            Number of extended fingers (0-5)
+            Dict with finger analysis including individual finger states
         """
         if not hand_landmarks or len(hand_landmarks) < 21:
-            return 0
+            return {
+                "extended_fingers": 0,
+                "fingers": {"thumb": False, "index": False, "middle": False, "ring": False, "pinky": False}
+            }
         
         try:
-            extended_fingers = 0
+            fingers = {"thumb": False, "index": False, "middle": False, "ring": False, "pinky": False}
             
-            # Check thumb extension (special case - compare distances from wrist)
+            # THUMB: Special case - compare distances from wrist (lateral extension)
             thumb_tip = hand_landmarks[4]
             thumb_ip = hand_landmarks[3]
             wrist = hand_landmarks[0]
@@ -643,28 +684,34 @@ class GestureClassifier:
             thumb_distance_tip = ((thumb_tip.x - wrist.x) ** 2 + (thumb_tip.y - wrist.y) ** 2) ** 0.5
             thumb_distance_ip = ((thumb_ip.x - wrist.x) ** 2 + (thumb_ip.y - wrist.y) ** 2) ** 0.5
             
-            # FIXED: More strict thumb detection
-            if thumb_distance_tip > thumb_distance_ip * 1.3:  # 30% tolerance instead of 10%
-                extended_fingers += 1
+            if thumb_distance_tip > thumb_distance_ip * 1.2:  # 20% tolerance for thumb
+                fingers["thumb"] = True
             
-            # Check other fingers (compare Y coordinates - tip should be significantly higher than PIP joint)
-            finger_names = ["index", "middle", "ring", "pinky"]
-            finger_data = [
-                (8, 6),   # Index: tip vs PIP
-                (12, 10), # Middle: tip vs PIP  
-                (16, 14), # Ring: tip vs PIP
-                (20, 18)  # Pinky: tip vs PIP
-            ]
+            # INDEX FINGER: tip vs PIP joint
+            if hand_landmarks[8].y < hand_landmarks[6].y - 0.06:  # 6% threshold
+                fingers["index"] = True
             
-            for i, (tip_idx, pip_idx) in enumerate(finger_data):
-                tip = hand_landmarks[tip_idx]
-                pip = hand_landmarks[pip_idx]
-                
-                # FIXED: More strict finger detection - tip must be SIGNIFICANTLY higher
-                if tip.y < pip.y - 0.08:  # Increased from 0.02 to 0.08 (8% difference required)
-                    extended_fingers += 1
+            # MIDDLE FINGER: tip vs PIP joint
+            if hand_landmarks[12].y < hand_landmarks[10].y - 0.06:
+                fingers["middle"] = True
             
-            return extended_fingers
+            # RING FINGER: tip vs PIP joint
+            if hand_landmarks[16].y < hand_landmarks[14].y - 0.06:
+                fingers["ring"] = True
+            
+            # PINKY: tip vs PIP joint
+            if hand_landmarks[20].y < hand_landmarks[18].y - 0.06:
+                fingers["pinky"] = True
+            
+            extended_count = sum(fingers.values())
+            
+            return {
+                "extended_fingers": extended_count,
+                "fingers": fingers
+            }
             
         except (IndexError, AttributeError, TypeError):
-            return 0 
+            return {
+                "extended_fingers": 0,
+                "fingers": {"thumb": False, "index": False, "middle": False, "ring": False, "pinky": False}
+            } 

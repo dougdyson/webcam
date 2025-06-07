@@ -97,60 +97,67 @@ class TestFingerCounting:
         return landmarks
 
     def test_fist_has_zero_fingers(self, classifier):
-        """Test: Closed fist should count 0 extended fingers."""
+        """Test: Closed fist should count as 0 fingers extended."""
         hand_landmarks = self.create_hand_landmarks({
             'thumb': False, 'index': False, 'middle': False, 'ring': False, 'pinky': False
         })
         
-        result = classifier._count_extended_fingers(hand_landmarks)
-        assert result == 0, "Closed fist should have 0 extended fingers"
+        result = classifier._analyze_finger_pattern(hand_landmarks)
+        assert result["extended_fingers"] == 0
+        assert not any(result["fingers"].values())
 
     def test_peace_sign_has_two_fingers(self, classifier):
-        """Test: Peace sign should count exactly 2 extended fingers."""
+        """Test: Peace sign should count as 2 fingers extended."""
         hand_landmarks = self.create_hand_landmarks({
             'thumb': False, 'index': True, 'middle': True, 'ring': False, 'pinky': False
         })
         
-        result = classifier._count_extended_fingers(hand_landmarks)
-        assert result == 2, "Peace sign should have exactly 2 extended fingers"
+        result = classifier._analyze_finger_pattern(hand_landmarks)
+        assert result["extended_fingers"] == 2
+        assert result["fingers"]["index"] == True
+        assert result["fingers"]["middle"] == True
 
     def test_open_palm_has_five_fingers(self, classifier):
-        """Test: Open palm should count 5 extended fingers."""
+        """Test: Open palm should count as 5 fingers extended."""
         hand_landmarks = self.create_hand_landmarks({
             'thumb': True, 'index': True, 'middle': True, 'ring': True, 'pinky': True
         })
         
-        result = classifier._count_extended_fingers(hand_landmarks)
-        assert result == 5, "Open palm should have 5 extended fingers"
+        result = classifier._analyze_finger_pattern(hand_landmarks)
+        assert result["extended_fingers"] == 5
+        assert all(result["fingers"].values())
 
     def test_pointing_has_one_finger(self, classifier):
-        """Test: Pointing gesture should count 1 extended finger."""
+        """Test: Pointing gesture should count as 1 finger extended."""
         hand_landmarks = self.create_hand_landmarks({
             'thumb': False, 'index': True, 'middle': False, 'ring': False, 'pinky': False
         })
         
-        result = classifier._count_extended_fingers(hand_landmarks)
-        assert result == 1, "Pointing should have 1 extended finger"
+        result = classifier._analyze_finger_pattern(hand_landmarks)
+        assert result["extended_fingers"] == 1
+        assert result["fingers"]["index"] == True
 
     def test_stop_gesture_has_four_fingers(self, classifier):
-        """Test: Stop gesture (4 fingers without thumb) should count 4."""
+        """Test: Stop gesture should count as 4 fingers extended."""
         hand_landmarks = self.create_hand_landmarks({
             'thumb': False, 'index': True, 'middle': True, 'ring': True, 'pinky': True
         })
         
-        result = classifier._count_extended_fingers(hand_landmarks)
-        assert result == 4, "Stop gesture should have 4 extended fingers"
+        result = classifier._analyze_finger_pattern(hand_landmarks)
+        assert result["extended_fingers"] == 4
 
     def test_empty_landmarks_returns_zero(self, classifier):
-        """Test: Empty or invalid landmarks should return 0."""
-        assert classifier._count_extended_fingers([]) == 0
-        assert classifier._count_extended_fingers(None) == 0
+        """Test: Empty landmarks should return 0 fingers."""
+        result = classifier._analyze_finger_pattern([])
+        assert result["extended_fingers"] == 0
+        assert not any(result["fingers"].values())
 
     def test_insufficient_landmarks_returns_zero(self, classifier):
-        """Test: Less than 21 landmarks should return 0."""
-        incomplete_landmarks = [MockLandmark(0.5, 0.5) for _ in range(10)]
-        result = classifier._count_extended_fingers(incomplete_landmarks)
-        assert result == 0, "Insufficient landmarks should return 0"
+        """Test: Insufficient landmarks (< 21) should return 0 fingers."""
+        incomplete_landmarks = [MockLandmark(0.5, 0.5) for _ in range(10)]  # Only 10 landmarks
+        result = classifier._analyze_finger_pattern(incomplete_landmarks)
+        assert result["extended_fingers"] == 0
+        assert not any(result["fingers"].values())
 
 if __name__ == "__main__":
     # Run tests
