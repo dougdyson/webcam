@@ -29,21 +29,6 @@ GESTURE_COLORS = {
     "None": [128, 128, 128]       # Gray
 }
 
-# 🔵 REFACTOR: Gesture mapping constants
-LEGACY_TO_MEDIAPIPE_MAPPING = {
-    "stop": "Open_Palm",
-    "peace": "Victory",
-    "none": "None",
-    "Unknown": "None"
-}
-
-MEDIAPIPE_TO_LEGACY_MAPPING = {
-    "Open_Palm": "stop",
-    "Victory": "peace",
-    "None": "none"
-    # New gestures keep MediaPipe names when no legacy equivalent
-}
-
 # 🔵 REFACTOR: Color to gesture mapping for mock recognition
 COLOR_TO_GESTURE_MAPPING = {
     (0, 255, 0): "Open_Palm",      # Green
@@ -159,27 +144,6 @@ class TestGestureResultComparison:
         
         # Should NOT match with tolerance of 0.2
         assert not gestures_match(result1, result2, tolerance=0.2)
-        
-    def test_legacy_gesture_name_mapping(self):
-        """
-        🔴 RED: Test mapping between legacy and MediaPipe gesture names.
-        
-        This will FAIL because we haven't implemented the mapping functions yet.
-        """
-        # Test old to new mapping
-        assert legacy_to_mediapipe("stop") == "Open_Palm"
-        assert legacy_to_mediapipe("peace") == "Victory"
-        assert legacy_to_mediapipe("none") == "None"
-        assert legacy_to_mediapipe("Unknown") == "None"
-        
-        # Test new to old mapping
-        assert mediapipe_to_legacy("Open_Palm") == "stop"
-        assert mediapipe_to_legacy("Victory") == "peace"
-        assert mediapipe_to_legacy("None") == "none"
-        
-        # Test new gestures keep their names
-        assert mediapipe_to_legacy("Closed_Fist") == "Closed_Fist"
-        assert mediapipe_to_legacy("Thumb_Up") == "Thumb_Up"
 
 
 class TestMediaPipeGestureRecognizerInitialization:
@@ -549,32 +513,6 @@ def gestures_match(result1: GestureResult, result2: GestureResult, tolerance: fl
     # Check if confidence difference is within tolerance
     confidence_diff = abs(result1.confidence - result2.confidence)
     return confidence_diff <= tolerance
-
-
-def legacy_to_mediapipe(legacy_gesture: str) -> str:
-    """
-    🔵 REFACTOR: Convert legacy gesture name to MediaPipe gesture name.
-    
-    Args:
-        legacy_gesture: Legacy gesture name ("stop", "peace", etc.)
-        
-    Returns:
-        MediaPipe gesture name
-    """
-    return LEGACY_TO_MEDIAPIPE_MAPPING.get(legacy_gesture, legacy_gesture)
-
-
-def mediapipe_to_legacy(mediapipe_gesture: str) -> str:
-    """
-    🔵 REFACTOR: Convert MediaPipe gesture name to legacy gesture name.
-    
-    Args:
-        mediapipe_gesture: MediaPipe gesture name ("Open_Palm", "Victory", etc.)
-        
-    Returns:
-        Legacy gesture name or MediaPipe name if no legacy equivalent
-    """
-    return MEDIAPIPE_TO_LEGACY_MAPPING.get(mediapipe_gesture, mediapipe_gesture)
 
 
 class MediaPipeGestureConfig:
