@@ -92,7 +92,7 @@ class AdvancedSpeakerVerification:
         if status.confidence < self.min_confidence:
             return False, f"low_confidence_{status.confidence:.2f}"
         
-        if status.gesture == "stop":
+        if status.gesture == "Open_Palm":
             return False, "stop_gesture_detected"
             
         return True, f"processing_confidence_{status.confidence:.2f}"
@@ -176,7 +176,7 @@ class VoiceAssistantController:
                             event_data = line[6:].decode().strip()
                             if event_data and event_data != '[HEARTBEAT]':
                                 gesture_event = json.loads(event_data)
-                                if gesture_event['data']['gesture_type'] == 'stop':
+                                if gesture_event['data']['gesture_type'] == 'Open_Palm':
                                     print("🖐️ Stop gesture detected - pausing voice assistant")
                                     self.voice_active = False
                                     if on_voice_stop:
@@ -1128,7 +1128,7 @@ class SecuritySystem:
         elif event_type == 'gesture_detected':
             # Could implement gesture-based disarming
             gesture = data.get('gesture_type')
-            if gesture == 'stop' and self.security_level == SecurityLevel.ALERT:
+            if gesture == 'Open_Palm' and self.security_level == SecurityLevel.ALERT:
                 print("🖐️ Stop gesture detected - could be disarm signal")
     
     async def trigger_security_alert(self, message: str, data: Dict):

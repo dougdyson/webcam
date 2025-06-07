@@ -20,6 +20,7 @@ Welcome to the Webcam Detection documentation! This guide helps you find exactly
 | [Client Integration](guides/CLIENT_INTEGRATION.md) | HTTP/SSE client implementation patterns | Connecting external applications |
 | [Package Usage](guides/PACKAGE_USAGE.md) | Using webcam-detection as a Python package | Importing and using in your Python projects |
 | [Publishing Guide](guides/PUBLISHING_GUIDE.md) | Package distribution and deployment patterns | Publishing and deploying your applications |
+| [MediaPipe Migration Guide](guides/MEDIAPIPE_MIGRATION_GUIDE.md) | Migrate to MediaPipe default gestures | Migrating from custom gesture names to MediaPipe defaults |
 
 ## ✨ Feature Documentation
 

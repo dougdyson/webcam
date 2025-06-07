@@ -95,7 +95,7 @@ Real-time gesture events via Server-Sent Events.
 ```
 event: gesture
 data: {
-    "gesture_type": "hand_up",
+    "gesture_type": "Open_Palm",
     "confidence": 0.92,
     "hand": "right",
     "timestamp": "2024-01-15T10:30:45.123456",
@@ -108,25 +108,35 @@ data: {
 }
 ```
 
-**Supported Gestures:**
-- `hand_up` - Hand raised with palm facing camera (primary gesture for voice control)
+**Supported Gestures (MediaPipe Defaults):**
+- `"Open_Palm"` - Open palm facing camera (universal stop/pause signal)
+- `"Victory"` - Victory/Peace sign with two fingers extended
+- `"Closed_Fist"` - Closed fist gesture
+- `"Pointing_Up"` - Index finger pointing upward
+- `"Thumb_Up"` - Thumbs up gesture
+- `"Thumb_Down"` - Thumbs down gesture
+- `"ILoveYou"` - ASL "I Love You" sign
+- `"Unknown"` - Unrecognized gesture
 
-### Gesture Detection Details
+### MediaPipe Gesture Detection Details
 
-The current implementation focuses on a single, highly reliable gesture:
+The current implementation supports **all 8 MediaPipe default gestures**, allowing developers to implement custom interpretation based on their use cases:
 
-**Hand Up Gesture:**
+**Open Palm Gesture:**
 - **Detection**: Open palm raised with palm facing the camera
 - **Use Case**: Universal stop/pause signal for voice assistants, presentations, automation
+- **MediaPipe Name**: `"Open_Palm"` (replaces custom `"stop"` interpretation)
 - **Confidence**: Typically 0.7-0.95 for clear gestures
-- **Position Data**: Includes hand center coordinates and palm orientation
-- **Performance**: Optimized for real-time detection with minimal false positives
+- **Client Interpretation**: Developers decide if this means stop, pause, or any other action
 
-**Technical Details:**
-- Uses MediaPipe hands detection for landmark analysis
-- Calculates palm normal vector to ensure palm faces camera
-- Provides position data for advanced applications
-- Only runs when human presence is detected (performance optimized)
+**Victory Gesture:**
+- **Detection**: Two fingers extended (index + middle) in V shape
+- **Use Case**: Peace sign, victory celebration, number two
+- **MediaPipe Name**: `"Victory"` (replaces custom `"peace"` interpretation)
+- **Client Interpretation**: Developers decide meaning (peace, victory, etc.)
+
+**Developer Flexibility:**
+The system now returns raw MediaPipe gesture names, allowing each client application to implement custom interpretation logic based on their specific needs.
 
 ## Snapshot Feature
 
@@ -407,12 +417,27 @@ def handle_gesture(event):
     if confidence < 0.8:  # Only high-confidence gestures
         return
     
-    if gesture == "hand_up":
-        # Hand up gesture - universal stop/pause signal
+    # Custom interpretation based on MediaPipe defaults
+    if gesture == "Open_Palm":
+        # Open palm - interpreted as "stop all" for this smart home
         emergency_stop()
-        # Or pause voice processing, stop music, etc.
         pause_voice_bot()
-        print("Hand up detected - pausing system")
+        print("Open palm detected - stopping all devices")
+    
+    elif gesture == "Victory":
+        # Victory sign - interpreted as "peace mode" for this smart home
+        enable_peace_mode()  # Dim lights, soft music
+        print("Victory gesture - enabling peace mode")
+    
+    elif gesture == "Thumb_Up":
+        # Thumbs up - interpreted as "approve/continue"
+        approve_current_action()
+        print("Thumbs up - approving current action")
+    
+    elif gesture == "Thumb_Down":
+        # Thumbs down - interpreted as "disapprove/cancel"
+        cancel_current_action()
+        print("Thumbs down - canceling current action")
 
 client.add_gesture_callback(handle_gesture)
 client.start_gesture_streaming()
@@ -420,7 +445,7 @@ client.start_gesture_streaming()
 # Monitor presence and gestures
 while True:
     if client.is_human_present():
-        print("Human present - gestures active")
+        print("Human present - gesture controls active")
     else:
         print("No human - waiting...")
     time.sleep(1)
@@ -470,7 +495,7 @@ React to gesture events in real-time:
 ```python
 def setup_gesture_controls():
     def on_gesture(event):
-        if event["gesture_type"] == "hand_up":
+        if event["gesture_type"] == "Open_Palm":
             # Hand up gesture - pause/stop signal
             app.pause()
             print("Hand up detected - pausing application")

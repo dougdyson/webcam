@@ -60,7 +60,7 @@ Detection Pipeline → EventPublisher → Service Layer
 
 ### Gesture Recognition (`src/gesture/`)
 - **HandDetection**: MediaPipe hands integration
-- **GestureClassification**: "Stop" gesture algorithm with palm orientation
+- **GestureClassification**: MediaPipe default gesture recognition with all 8 supported gestures
 - **Performance Optimization**: Only runs when human presence confirmed
 
 ### Service Layer (`src/service/`)
