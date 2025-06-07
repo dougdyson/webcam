@@ -125,4 +125,29 @@ def get_default_config(profile: str = "balanced") -> GestureConfig:
         available = ", ".join(DEFAULT_CONFIGS.keys())
         raise ValueError(f"Unknown profile '{profile}'. Available: {available}")
     
-    return DEFAULT_CONFIGS[profile] 
+    return DEFAULT_CONFIGS[profile]
+
+
+# MediaPipe Default Gesture Names (replaces custom mappings)
+MEDIAPIPE_GESTURE_NAMES = (
+    "Unknown",      # 0: Unrecognized gesture
+    "Closed_Fist",  # 1: Closed fist
+    "Open_Palm",    # 2: Open palm (was "stop")
+    "Pointing_Up",  # 3: Index finger pointing upward
+    "Thumb_Down",   # 4: Thumbs down
+    "Thumb_Up",     # 5: Thumbs up
+    "Victory",      # 6: Victory/Peace sign (was "peace")
+    "ILoveYou"      # 7: ASL "I Love You" sign
+)
+
+# Gesture index to name mapping
+MEDIAPIPE_GESTURE_INDEX_TO_NAME = {
+    0: "Unknown",
+    1: "Closed_Fist", 
+    2: "Open_Palm",
+    3: "Pointing_Up",
+    4: "Thumb_Down",
+    5: "Thumb_Up",
+    6: "Victory",
+    7: "ILoveYou"
+} 

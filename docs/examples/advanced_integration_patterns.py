@@ -194,9 +194,10 @@ class SmartHomeIntegration:
             if action == "start":
                 print(f"🎵 Starting ambient music at {volume}% volume")
                 self.automation_state["music_playing"] = True
-            elif action == "stop":
-                print("🔇 Stopping music")
-                self.automation_state["music_playing"] = False
+            elif action == "Open_Palm":
+                print("🛑 Stop gesture detected - stopping all devices")
+                await self._stop_all_devices()
+                return {"status": "stopped", "devices": "all"}
             elif action == "toggle":
                 new_state = not self.automation_state["music_playing"]
                 print(f"🎵 {'Starting' if new_state else 'Stopping'} music")

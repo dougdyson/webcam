@@ -15,10 +15,10 @@ class GestureResult:
         self.gesture_type = gesture_type
         self.confidence = confidence
         self.position = position or {}
-        self.gesture_detected = gesture_type != "none"
+        self.gesture_detected = gesture_type != "Unknown"  # Updated from "none"
         
-        # Legacy compatibility
-        self.palm_facing_camera = gesture_type in ["stop", "peace"]
+        # Updated legacy compatibility for MediaPipe defaults
+        self.palm_facing_camera = gesture_type in ["Open_Palm", "Victory"]
 
 class GestureClassifier:
     """
@@ -556,10 +556,10 @@ class GestureClassifier:
         """
         Comprehensive gesture detection that classifies multiple gesture types.
         
-        Currently supports:
-        - "stop": Open palm stop gesture (3+ fingers, above shoulders, proper position)
-        - "peace": Peace sign (exactly 2 fingers extended)
-        - "none": No recognized gesture
+        Returns MediaPipe default gesture names:
+        - "Open_Palm": Open palm gesture (3+ fingers, above shoulders, proper position)
+        - "Victory": Victory/Peace sign (exactly 2 fingers extended)
+        - "Unknown": No recognized gesture
         
         Args:
             hand_landmarks: List of hand landmark objects
@@ -567,15 +567,15 @@ class GestureClassifier:
             palm_normal_vector: Palm normal direction vector
             
         Returns:
-            GestureResult with gesture type, confidence, and position info
+            GestureResult with MediaPipe default gesture type, confidence, and position info
         """
         if not hand_landmarks or pose_landmarks is None:
-            return GestureResult("none", 0.0)
+            return GestureResult("Unknown", 0.0)
         
         # Calculate shoulder reference from pose data
         shoulder_reference_y = self.calculate_shoulder_reference(pose_landmarks)
         if shoulder_reference_y is None:
-            return GestureResult("none", 0.0)
+            return GestureResult("Unknown", 0.0)
         
         # Get hand center position
         hand_center_y = self._get_hand_center_y(hand_landmarks)
@@ -588,12 +588,12 @@ class GestureClassifier:
         
         # If basic requirements not met, no gesture
         if not (is_above_shoulder and is_palm_facing_camera):
-            return GestureResult("none", 0.0)
+            return GestureResult("Unknown", 0.0)
         
         # Check arm geometry (not behind head, proper extension)
         is_proper_arm_geometry = self._validate_stop_gesture_arm_geometry(hand_landmarks, pose_landmarks)
         if not is_proper_arm_geometry:
-            return GestureResult("none", 0.0)
+            return GestureResult("Unknown", 0.0)
         
         # Count extended fingers to determine gesture type
         extended_fingers = self._count_extended_fingers(hand_landmarks)
@@ -604,20 +604,20 @@ class GestureClassifier:
             "extended_fingers": extended_fingers
         }
         
-        # Classify gesture based on finger count
+        # Classify gesture based on finger count - using MediaPipe defaults
         if extended_fingers >= 3:
-            # Stop gesture (open palm)
+            # Open palm gesture (MediaPipe default: "Open_Palm")
             confidence = self.calculate_gesture_confidence(hand_landmarks, shoulder_reference_y, palm_normal_vector)
-            return GestureResult("stop", confidence, position_info)
+            return GestureResult("Open_Palm", confidence, position_info)
         
         elif extended_fingers == 2:
-            # Peace sign
-            confidence = min(0.9, max(0.6, palm_z_component))  # High confidence for clear peace signs
-            return GestureResult("peace", confidence, position_info)
+            # Victory/Peace sign (MediaPipe default: "Victory")
+            confidence = min(0.9, max(0.6, palm_z_component))  # High confidence for clear victory signs
+            return GestureResult("Victory", confidence, position_info)
         
         else:
             # Other gestures (pointing, fist, etc.) - not currently supported
-            return GestureResult("none", 0.0)
+            return GestureResult("Unknown", 0.0)
 
     def _count_extended_fingers(self, hand_landmarks: List[Any]) -> int:
         """

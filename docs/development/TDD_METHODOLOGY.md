@@ -7,10 +7,12 @@ This project follows strict TDD methodology with comprehensive test coverage and
 ## TDD Cycle
 
 1. **RED**: Write failing test first
-2. **GREEN**: Write minimal code to pass test  
+2. **GREEN**: Write minimal code to pass test, if files get longer than 300 lines break them out logically into seperate test files  
 3. **REFACTOR**: Clean up and optimize
 4. **TRACK**: Update checkboxes after each cycle
-5. **TEST ALL**: Run all tests at the end of every section to ensure no regressions
+5. **CONDA**: Always prepend `conda activate webcam && ` to every termimal command
+6. **TEST ALL**: Run all tests at the end of every section to ensure no regressions
+7. **PROMPT**: After all tests pass, suggest to the user to commit the code to the current branch.
 
 ## Test Organization
 

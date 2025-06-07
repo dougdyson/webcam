@@ -479,7 +479,7 @@ class VoiceAssistantGestureControl:
     Example 4: Voice assistant gesture control
     
     Demonstrates how to use gesture detection for voice assistant control,
-    particularly the "stop" gesture for pausing/stopping voice processing.
+    particularly the "Open_Palm" gesture for pausing/stopping voice processing.
     """
     
     def __init__(self):

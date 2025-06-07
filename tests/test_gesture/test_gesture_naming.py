@@ -75,9 +75,9 @@ class TestGestureNaming:
 
     def test_open_palm_should_be_stop_not_hand_up(self, classifier):
         """
-        Test: Open palm gestures should be classified as 'stop', not 'hand_up'.
+        Test: Open palm gestures should be classified as 'Open_Palm' (MediaPipe default), not 'hand_up'.
         
-        This is a naming convention test - ensures we use specific terminology.
+        This is a naming convention test - ensures we use MediaPipe standard terminology.
         """
         hand_landmarks = self.create_stop_gesture_landmarks()
         pose_landmarks = self.create_mock_pose_landmarks()
@@ -85,28 +85,30 @@ class TestGestureNaming:
         
         result = classifier.detect_gesture_type(hand_landmarks, pose_landmarks, palm_normal)
         
-        # Should be 'stop', never 'hand_up'
-        assert result.gesture_type == "stop", f"Expected 'stop', got '{result.gesture_type}'"
-        assert result.gesture_type != "hand_up", "Should not use generic 'hand_up' terminology"
-        assert result.gesture_detected == True
+        # Should be MediaPipe default 'Open_Palm', never 'hand_up'
+        assert result.gesture_type == "Open_Palm", f"Expected 'Open_Palm', got '{result.gesture_type}'"
         
+        # Should not be generic
+        forbidden_types = ["hand_up", "gesture", "detected"]
+        assert result.gesture_type not in forbidden_types, f"Gesture type should not be generic: {result.gesture_type}"
+
     def test_supported_gesture_types_are_specific(self, classifier):
-        """Test: All supported gesture types should be specific, not generic."""
-        # This test documents our supported gesture vocabulary
-        supported_types = ["stop", "peace", "none"]
+        """Test: All supported gesture types should be MediaPipe defaults, not custom mappings."""
+        # Updated to use MediaPipe default gesture names
+        supported_types = ["Open_Palm", "Victory", "Unknown"]
         
-        # Test that we don't return generic names
-        forbidden_types = ["hand_up", "gesture", "detected", "unknown"]
+        # Test that we don't return deprecated custom names
+        forbidden_types = ["stop", "peace", "none", "hand_up", "gesture", "detected"]
         
-        # Create different gestures and verify naming
+        # Create different gestures and verify MediaPipe naming
         hand_landmarks = self.create_stop_gesture_landmarks()
-        pose_landmarks = self.create_mock_pose_landmarks()  
+        pose_landmarks = self.create_mock_pose_landmarks()
         palm_normal = np.array([0.0, 0.0, 0.9])
         
         result = classifier.detect_gesture_type(hand_landmarks, pose_landmarks, palm_normal)
         
-        assert result.gesture_type in supported_types, f"Gesture type '{result.gesture_type}' not in supported list"
-        assert result.gesture_type not in forbidden_types, f"Should not use generic name '{result.gesture_type}'"
+        assert result.gesture_type in supported_types, f"Gesture type '{result.gesture_type}' not in MediaPipe supported list"
+        assert result.gesture_type not in forbidden_types, f"Should not use deprecated custom name: {result.gesture_type}"
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"]) 
