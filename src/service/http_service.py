@@ -113,6 +113,16 @@ class HTTPDetectionService:
         # NEW: Description service integration for Phase 4.1
         self._description_service = None
         
+        # NEW: Gesture tracking for MediaPipe integration
+        self.current_gesture_status = {
+            "gesture_detected": False,
+            "gesture_type": "None",
+            "confidence": 0.0,
+            "handedness": None,
+            "last_gesture_time": None,
+            "last_gesture_lost_time": None
+        }
+        
         # NEW: Description metrics tracking for Phase 4.2
         self._description_stats = {
             'total_descriptions': 0,
@@ -234,103 +244,53 @@ class HTTPDetectionService:
         
         @self.app.get("/description/latest")
         async def get_latest_description():
-            """Get the most recent snapshot description from Ollama."""
+            """Get latest AI description of the scene."""
+            if self._description_service is None:
+                raise HTTPException(status_code=503, detail="Description service not available")
+            
             try:
-                # Check if description service is available
-                if self._description_service is None:
-                    raise HTTPException(
-                        status_code=503, 
-                        detail="Description service not available"
-                    )
+                # Get latest description from the service
+                latest_description = self._description_service.get_latest_description()
                 
-                # Check if the underlying Ollama service is available
-                try:
-                    if hasattr(self._description_service, 'ollama_client'):
-                        client = self._description_service.ollama_client
-                        is_available = getattr(client, 'is_available', lambda: True)()
-                        if not is_available:
-                            raise HTTPException(
-                                status_code=503,
-                                detail="Ollama service unavailable"
-                            )
-                except Exception as ollama_check_error:
-                    # If we can't check Ollama availability, assume it's down
-                    raise HTTPException(
-                        status_code=503,
-                        detail="Ollama service unavailable"
-                    )
+                if latest_description is None:
+                    return JSONResponse(content={
+                        "description": None,
+                        "confidence": 0.0,
+                        "timestamp": None,
+                        "cached": False,
+                        "status": "no_description"
+                    })
                 
-                # Get latest description
-                description_result = self._description_service.get_latest_description()
-                
-                # Handle no description available (this is different from service being down)
-                if description_result is None:
-                    raise HTTPException(
-                        status_code=404,
-                        detail="No description available"
-                    )
-                
-                # Check if the result indicates a service failure
-                error_type = getattr(description_result, 'error', None)
-                if error_type in ['service_unavailable', 'timeout', 'connection_error']:
-                    # Service is failing, return 503
-                    raise HTTPException(
-                        status_code=503,
-                        detail={
-                            "error": "Description service temporarily unavailable",
-                            "error_type": error_type,
-                            "fallback_description": description_result.description
-                        }
-                    )
-                
-                # Handle description service errors
-                if hasattr(description_result, 'success') and not description_result.success:
-                    return JSONResponse(
-                        status_code=200,
-                        content={
-                            "success": False,
-                            "error": getattr(description_result, 'error', 'Unknown error'),
-                            "description": None,
-                            "confidence": 0.0,
-                            "timestamp": datetime.now().isoformat(),
-                            "processing_time_ms": 0,
-                            "cached": False
-                        }
-                    )
-                
-                # Successful description response
-                response_data = description_result.to_dict()
-                
-                # Add enhanced cache metadata
-                cache_age_seconds = getattr(description_result, 'cache_age_seconds', 0)
-                response_data["cache_metadata"] = {
-                    "cached": getattr(description_result, 'cached', False),
-                    "cache_hit": getattr(description_result, 'cached', False),
-                    "cache_age_seconds": cache_age_seconds
-                }
-                
-                # Add performance indicators
-                response_data["performance"] = {
-                    "processing_time_ms": getattr(description_result, 'processing_time_ms', 0),
-                    "queue_time_ms": getattr(description_result, 'queue_time_ms', 0)
-                }
-                
-                # Add model information if available
-                if hasattr(description_result, 'model_used'):
-                    response_data["performance"]["model_used"] = description_result.model_used
+                # Convert DescriptionResult to dictionary using its to_dict() method
+                response_data = latest_description.to_dict()
+                response_data["status"] = "available"
                 
                 return JSONResponse(content=response_data)
                 
-            except HTTPException:
-                # Re-raise HTTP exceptions
-                raise
             except Exception as e:
-                # Handle unexpected errors
                 self.logger.error(f"Error getting latest description: {e}")
-                raise HTTPException(
+                return JSONResponse(
                     status_code=500,
-                    detail="Internal server error retrieving description"
+                    content={
+                        "description": None,
+                        "confidence": 0.0,
+                        "timestamp": None,
+                        "cached": False,
+                        "status": "error",
+                        "error": str(e)
+                    }
                 )
+        
+        # NEW: Gesture endpoints for MediaPipe integration
+        @self.app.get("/gesture/latest")
+        async def get_latest_gesture():
+            """Get latest gesture status."""
+            return JSONResponse(content=self.current_gesture_status.copy())
+        
+        @self.app.get("/gesture/status")
+        async def get_gesture_status():
+            """Get current gesture status (alias for /gesture/latest)."""
+            return JSONResponse(content=self.current_gesture_status.copy())
         
         if self.config.enable_history:
             @self.app.get("/history")
@@ -386,12 +346,60 @@ class HTTPDetectionService:
                 
                 self.logger.debug(f"Updated presence status: {self.current_status.human_present}")
             
+            # NEW: Handle gesture events for MediaPipe integration
+            elif event.event_type == EventType.GESTURE_DETECTED:
+                self._handle_gesture_detected_event(event)
+            elif event.event_type == EventType.GESTURE_LOST:
+                self._handle_gesture_lost_event(event)
+            elif event.event_type == EventType.GESTURE_CONFIDENCE_UPDATE:
+                self._handle_gesture_confidence_update_event(event)
+            
             # NEW: Handle description events for Phase 4.2
             elif event.event_type in [EventType.DESCRIPTION_GENERATED, EventType.DESCRIPTION_FAILED, EventType.DESCRIPTION_CACHED]:
                 self._handle_description_events(event)
         
         except Exception as e:
             self.logger.error(f"Error handling detection event: {e}")
+    
+    def _handle_gesture_detected_event(self, event: ServiceEvent) -> None:
+        """Handle gesture detected events."""
+        try:
+            data = event.data
+            self.current_gesture_status.update({
+                "gesture_detected": True,
+                "gesture_type": data.get("gesture_type", "None"),
+                "confidence": data.get("confidence", 0.0),
+                "handedness": data.get("handedness", data.get("hand")),  # Support both keys
+                "last_gesture_time": event.timestamp.isoformat()
+            })
+            self.logger.debug(f"Gesture detected: {data.get('gesture_type')}")
+        except Exception as e:
+            self.logger.error(f"Error handling gesture detected event: {e}")
+    
+    def _handle_gesture_lost_event(self, event: ServiceEvent) -> None:
+        """Handle gesture lost events."""
+        try:
+            data = event.data
+            self.current_gesture_status.update({
+                "gesture_detected": False,
+                "gesture_type": "None",
+                "confidence": 0.0,
+                "handedness": None,
+                "last_gesture_lost_time": event.timestamp.isoformat()
+            })
+            self.logger.debug(f"Gesture lost: {data.get('gesture_type', 'unknown')}")
+        except Exception as e:
+            self.logger.error(f"Error handling gesture lost event: {e}")
+    
+    def _handle_gesture_confidence_update_event(self, event: ServiceEvent) -> None:
+        """Handle gesture confidence update events."""
+        try:
+            data = event.data
+            if self.current_gesture_status["gesture_detected"]:
+                self.current_gesture_status["confidence"] = data.get("confidence", 0.0)
+                self.logger.debug(f"Gesture confidence updated: {data.get('confidence')}")
+        except Exception as e:
+            self.logger.error(f"Error handling gesture confidence update event: {e}")
     
     def _handle_description_events(self, event: ServiceEvent) -> None:
         """Handle description-related events and update metrics."""

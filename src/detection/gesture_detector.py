@@ -33,15 +33,30 @@ class GestureDetector(HumanDetector):
     - Performance optimization (only runs when human present)
     """
     
-    def __init__(self, config: Optional[DetectorConfig] = None):
+    def __init__(self, config: Optional[DetectorConfig] = None, backend: str = "legacy"):
         """
         Initialize gesture detector.
         
         Args:
             config: Detector configuration, defaults to DetectorConfig()
+            backend: Gesture detection backend ("legacy" or "mediapipe")
         """
         super().__init__(config)
         
+        # 🟢 GREEN: Add backend selection
+        self._backend = backend
+        if backend not in ["legacy", "mediapipe"]:
+            from .base import DetectorError
+            raise DetectorError(f"Unknown backend: {backend}. Supported backends: 'legacy', 'mediapipe'")
+        
+        # Backend-specific initialization
+        if backend == "mediapipe":
+            self._init_mediapipe_backend()
+        else:
+            self._init_legacy_backend()
+    
+    def _init_legacy_backend(self) -> None:
+        """Initialize legacy gesture detection backend."""
         # MediaPipe components
         self._mp_hands = None
         self._hands_detector = None
@@ -62,6 +77,21 @@ class GestureDetector(HumanDetector):
             'palm_facing_confidence': 0.8,     # STRICT: Palm must clearly face camera (80% confidence)
         }
     
+    def _init_mediapipe_backend(self) -> None:
+        """Initialize MediaPipe gesture detection backend."""
+        from ..gesture.mediapipe_recognizer import MediaPipeGestureRecognizer, MediaPipeGestureConfig
+        
+        # Create MediaPipe configuration from DetectorConfig
+        mediapipe_config = MediaPipeGestureConfig(
+            min_hand_detection_confidence=self.config.min_detection_confidence,
+            min_tracking_confidence=self.config.min_tracking_confidence,
+            num_hands=2  # Default to 2 hands for MediaPipe
+        )
+        
+        # Initialize MediaPipe recognizer
+        self._mediapipe_recognizer = MediaPipeGestureRecognizer(mediapipe_config)
+        self._initialized = False
+    
     def initialize(self) -> None:
         """
         Initialize MediaPipe hands detection and gesture classification.
@@ -72,6 +102,13 @@ class GestureDetector(HumanDetector):
         if self._initialized:
             return  # Idempotent initialization
         
+        if self._backend == "mediapipe":
+            self._initialize_mediapipe()
+        else:
+            self._initialize_legacy()
+    
+    def _initialize_legacy(self) -> None:
+        """Initialize legacy backend."""
         try:
             # Initialize MediaPipe hands
             self._mp_hands = mp.solutions.hands
@@ -89,12 +126,26 @@ class GestureDetector(HumanDetector):
             self._gesture_classifier = GestureClassifier(self._gesture_config)
             
             self._initialized = True
-            logger.info("Gesture detector initialized successfully")
+            logger.info("Legacy gesture detector initialized successfully")
             
         except Exception as e:
             self._initialized = False
             raise DetectorError(
-                "Failed to initialize gesture detector",
+                "Failed to initialize legacy gesture detector",
+                original_error=e
+            )
+    
+    def _initialize_mediapipe(self) -> None:
+        """Initialize MediaPipe backend."""
+        try:
+            # MediaPipe GestureRecognizer is already initialized in constructor
+            self._initialized = True
+            logger.info("MediaPipe gesture detector initialized successfully")
+            
+        except Exception as e:
+            self._initialized = False
+            raise DetectorError(
+                "Failed to initialize MediaPipe gesture detector",
                 original_error=e
             )
     
@@ -105,19 +156,24 @@ class GestureDetector(HumanDetector):
         Logs errors but does not raise exceptions to ensure cleanup always completes.
         """
         try:
-            if self._hands_detector is not None:
-                self._hands_detector.close()
-                self._hands_detector = None
+            if self._backend == "mediapipe":
+                if hasattr(self, '_mediapipe_recognizer'):
+                    self._mediapipe_recognizer.cleanup()
+                    self._mediapipe_recognizer = None
+            else:
+                if self._hands_detector is not None:
+                    self._hands_detector.close()
+                    self._hands_detector = None
+                
+                self._mp_hands = None
+                self._gesture_classifier = None
             
-            self._mp_hands = None
-            self._gesture_classifier = None
             self._initialized = False
-            
-            logger.info("Gesture detector cleaned up successfully")
+            logger.info(f"{self._backend.capitalize()} gesture detector cleaned up successfully")
             
         except Exception as e:
             # Log error but don't raise - cleanup should always complete
-            logger.error(f"Error during gesture detector cleanup: {e}")
+            logger.error(f"Error during {self._backend} gesture detector cleanup: {e}")
             self._initialized = False
     
     @property
@@ -128,9 +184,15 @@ class GestureDetector(HumanDetector):
         Returns:
             True if detector is ready for detection, False otherwise
         """
-        return (self._initialized and 
-                self._hands_detector is not None and
-                self._gesture_classifier is not None)
+        if self._backend == "mediapipe":
+            return (self._initialized and 
+                    hasattr(self, '_mediapipe_recognizer') and
+                    self._mediapipe_recognizer is not None and
+                    self._mediapipe_recognizer.is_initialized())
+        else:
+            return (self._initialized and 
+                    self._hands_detector is not None and
+                    self._gesture_classifier is not None)
     
     def detect_gestures(self, frame: np.ndarray, pose_landmarks: Optional[Any] = None) -> GestureResult:
         """
@@ -149,11 +211,16 @@ class GestureDetector(HumanDetector):
         if not self.is_initialized:
             raise DetectorError("Detector not initialized. Call initialize() first.")
         
-        # NO FRAME SKIPPING - process every frame like debug script
-        
         # Validate frame format
         self._validate_frame(frame)
         
+        if self._backend == "mediapipe":
+            return self._detect_gestures_mediapipe(frame, pose_landmarks)
+        else:
+            return self._detect_gestures_legacy(frame, pose_landmarks)
+    
+    def _detect_gestures_legacy(self, frame: np.ndarray, pose_landmarks: Optional[Any] = None) -> GestureResult:
+        """Legacy gesture detection implementation."""
         try:
             # Convert BGR to RGB for MediaPipe
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -166,9 +233,44 @@ class GestureDetector(HumanDetector):
                 
         except Exception as e:
             raise DetectorError(
-                "Gesture detection processing failed",
+                "Legacy gesture detection processing failed",
                 original_error=e
             )
+    
+    def _detect_gestures_mediapipe(self, frame: np.ndarray, pose_landmarks: Optional[Any] = None) -> GestureResult:
+        """MediaPipe gesture detection implementation."""
+        try:
+            # Use MediaPipe GestureRecognizer
+            mediapipe_result = self._mediapipe_recognizer.recognize_from_image(frame)
+            
+            if mediapipe_result is None:
+                from ..gesture.result import GestureResult as LegacyGestureResult
+                return LegacyGestureResult(False, "none", 0.0)
+            
+            # Convert MediaPipe result to legacy GestureResult format
+            return self._convert_mediapipe_result(mediapipe_result)
+                
+        except Exception as e:
+            raise DetectorError(
+                "MediaPipe gesture detection processing failed",
+                original_error=e
+            )
+    
+    def _convert_mediapipe_result(self, mediapipe_result) -> GestureResult:
+        """Convert MediaPipe GestureResult to legacy GestureResult format."""
+        from ..gesture.result import GestureResult as LegacyGestureResult
+        
+        # Convert gesture type
+        gesture_detected = mediapipe_result.gesture_type != "None"
+        gesture_type = mediapipe_result.gesture_type.lower() if mediapipe_result.gesture_type != "None" else "none"
+        
+        # Create legacy result
+        return LegacyGestureResult(
+            gesture_detected=gesture_detected,
+            gesture_type=gesture_type,
+            confidence=mediapipe_result.confidence,
+            hand=mediapipe_result.handedness
+        )
     
     def detect(self, frame: np.ndarray) -> GestureResult:
         """
@@ -184,6 +286,21 @@ class GestureDetector(HumanDetector):
             GestureResult with gesture detection information
         """
         return self.detect_gestures(frame)
+    
+    def get_mediapipe_config(self):
+        """
+        Get MediaPipe configuration (only available for MediaPipe backend).
+        
+        Returns:
+            MediaPipe configuration object
+            
+        Raises:
+            DetectorError: If backend is not MediaPipe
+        """
+        if self._backend != "mediapipe":
+            raise DetectorError("MediaPipe configuration only available for MediaPipe backend")
+        
+        return self._mediapipe_recognizer.get_config()
     
     def _validate_frame(self, frame: np.ndarray) -> None:
         """

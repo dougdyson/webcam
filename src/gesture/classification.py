@@ -616,17 +616,17 @@ class GestureClassifier:
             confidence = 0.9 if is_palm_facing_camera else 0.7
             return GestureResult("Pointing_Up", confidence, position_info)
         
-        # 3. THUMB_UP: Only thumb extended, palm facing camera
-        elif (finger_analysis["extended_fingers"] == 1 and 
-              finger_analysis["fingers"]["thumb"] and 
-              is_palm_facing_camera):
-            confidence = 0.9
-            return GestureResult("Thumb_Up", confidence, position_info)
-        
-        # 4. THUMB_DOWN: Only thumb extended, palm facing away
+        # 3. THUMB_UP: Only thumb extended, palm facing AWAY (showing back of hand)
         elif (finger_analysis["extended_fingers"] == 1 and 
               finger_analysis["fingers"]["thumb"] and 
               not is_palm_facing_camera):
+            confidence = 0.9
+            return GestureResult("Thumb_Up", confidence, position_info)
+        
+        # 4. THUMB_DOWN: Only thumb extended, palm facing TOWARDS camera (showing palm)
+        elif (finger_analysis["extended_fingers"] == 1 and 
+              finger_analysis["fingers"]["thumb"] and 
+              is_palm_facing_camera):
             confidence = 0.8
             return GestureResult("Thumb_Down", confidence, position_info)
         

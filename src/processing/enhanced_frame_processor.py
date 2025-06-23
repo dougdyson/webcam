@@ -63,12 +63,16 @@ class EnhancedFrameProcessor:
         gesture_detector: GestureDetector,
         event_publisher: EventPublisher,
         config: Optional[EnhancedProcessorConfig] = None,
-        min_human_confidence_for_gesture: Optional[float] = None
+        min_human_confidence_for_gesture: Optional[float] = None,
+        gesture_backend: str = "legacy"
     ):
         """Initialize enhanced frame processor."""
         self.detector = detector
         self.gesture_detector = gesture_detector
         self.event_publisher = event_publisher
+        
+        # NEW: Store gesture backend configuration
+        self.gesture_backend = gesture_backend
         
         # Configuration
         self.config = config or EnhancedProcessorConfig()
