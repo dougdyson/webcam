@@ -95,9 +95,9 @@ class WebcamService:
     def initialize(self):
         """Initialize all components with proper error handling."""
         try:
-            # Step 1: Initialize configuration (FIRST)
+            # Step 1: Initialize configuration - skip Ollama config for gesture-only mode
             self.config_manager = ConfigManager()
-            self.ollama_config = self.config_manager.load_ollama_config()
+            # self.ollama_config = self.config_manager.load_ollama_config()  # DISABLED
             
             # Step 2: Initialize camera (quiet)
             camera_config = CameraConfig()
@@ -117,54 +117,12 @@ class WebcamService:
                 detector=self.detector
             )
             
-            # Step 5: Initialize Ollama components
-            try:
-                # Initialize OllamaClient with configuration
-                client_config = self.ollama_config['client']
-                ollama_config = OllamaConfig(
-                    model=client_config['model'],
-                    base_url=client_config['base_url'],
-                    timeout=client_config['timeout_seconds'],
-                    max_retries=client_config['max_retries']
-                )
-                self.ollama_client = OllamaClient(config=ollama_config)
-                
-                # Initialize OllamaImageProcessor
-                self.ollama_image_processor = OllamaImageProcessor()
-                
-                # Load room layout for enhanced descriptions
-                room_layout = self._load_room_layout()
-                
-                # Create enhanced configuration with room context
-                description_config = DescriptionServiceConfig(
-                    room_layout_context=room_layout,
-                    use_room_context=True,
-                    cache_ttl_seconds=300,
-                    enable_caching=True,
-                    timeout_seconds=30.0,
-                    enable_fallback_descriptions=True,
-                    retry_attempts=2
-                )
-                
-                # Initialize DescriptionService with enhanced configuration
-                self.description_service = DescriptionService(
-                    ollama_client=self.ollama_client,
-                    image_processor=self.ollama_image_processor,
-                    config=description_config
-                )
-                
-                # NEW: Setup event publisher integration for description events (Phase 6.2)
-                self.description_service.set_event_publisher(self.event_publisher)
-                
-                logger.info("✅ Ollama integration initialized successfully")
-                
-            except Exception as ollama_error:
-                logger.warning(f"⚠️ Ollama integration failed: {ollama_error}")
-                logger.warning("📍 Service will continue without AI description features")
-                # Set flag to indicate description service failed but don't raise
-                self._description_service_failed = True
-                self.description_service = None
-                self.ollama_client = None
+            # Step 5: Ollama components - DISABLED for gesture-only mode
+            logger.info("📍 Ollama analysis disabled - running in gesture-only mode")
+            self.description_service = None
+            self.ollama_client = None
+            self.ollama_image_processor = None
+            self._description_service_failed = False  # Not failed, intentionally disabled
             
             # DISABLED: Initialize enhanced frame processor with BALANCED SETTINGS (prevent false positives but still work)
             # processor_config = EnhancedProcessorConfig(
@@ -194,9 +152,9 @@ class WebcamService:
             self.http_service = HTTPDetectionService(http_config)
             self.http_service.setup_event_integration(self.event_publisher)
             
-            # NEW: Setup description integration with HTTP service (Phase 6.2)
-            if self.description_service:
-                self.http_service.setup_description_integration(self.description_service)
+            # Description integration disabled - gesture-only mode
+            # if self.description_service:
+            #     self.http_service.setup_description_integration(self.description_service)
             
             # ENABLED: Initialize SSE service (gesture streaming)
             sse_config = SSEServiceConfig(
@@ -258,22 +216,17 @@ class WebcamService:
         fps_target = 15
         frame_time = 1.0 / fps_target
         
-        # Configure Latest Frame Processor for wait-for-completion Ollama processing
-        if self.description_service:
-            self.latest_frame_processor.set_description_service(self.description_service)
+        # Ollama processing disabled - running in gesture-only mode
+        # if self.description_service:
+        #     self.latest_frame_processor.set_description_service(self.description_service)
         
         while self.is_running and not self._shutdown_requested:
             try:
                 # Get frame from camera
                 frame = self.camera.get_frame()
                 if frame is not None:
-                    # Latest Frame processing with wait-for-completion descriptions (Phase 3.1 + Fixed)
-                    if self.description_service:
-                        # Use wait-for-completion approach - no thread explosion
-                        human_result = self.latest_frame_processor.process_frame_with_description(frame)
-                    else:
-                        # Fallback to simple detection if no Ollama
-                        human_result = self.latest_frame_processor.process_frame(frame)
+                    # Simple detection processing - Ollama disabled for gesture-only mode
+                    human_result = self.latest_frame_processor.process_frame(frame)
                     
                     detection_count += 1
                     
@@ -334,10 +287,8 @@ class WebcamService:
                         status = "👤 HUMAN" if human_result.human_present else "❌ NO HUMAN"
                         # Clean gesture display with current status
                         gesture_display = f"{gesture_status} ({gesture_confidence:.2f})" if gesture_confidence > 0 else gesture_status
-                        # Latest Frame status with Ollama processing indicator
-                        ollama_status = "🔄" if (self.description_service and self.latest_frame_processor.is_description_processing()) else "⚡"
-                        latest_frame_status = f" | {ollama_status} LATEST FRAME"
-                        print(f"\r{status} | Conf: {human_result.confidence:.2f} | Gesture: {gesture_display} | Frames: {detection_count} | FPS: {fps_target}{latest_frame_status}", end='', flush=True)
+                        # Simplified status - no Ollama processing indicators needed
+                        print(f"\r{status} | Conf: {human_result.confidence:.2f} | Gesture: {gesture_display} | Frames: {detection_count} | FPS: {fps_target} | ⚡ GESTURE-ONLY", end='', flush=True)
                         last_status_print = current_time
                     
                     time.sleep(frame_time)
