@@ -44,7 +44,8 @@ from src.processing.latest_frame_processor import LatestFrameProcessor
 # Service layer
 from src.service.http_service import HTTPDetectionService, HTTPServiceConfig
 from src.service.sse_service import SSEDetectionService, SSEServiceConfig
-from src.service.events import EventPublisher
+from src.service.sse_presence_service import SSEPresenceService
+from src.service.events import EventPublisher, EventType, ServiceEvent
 
 # Ollama integration (NEW - Phase 6.2)
 from src.utils.config import ConfigManager
@@ -79,6 +80,7 @@ class WebcamService:
         # Services
         self.http_service = None
         self.sse_service = None
+        self.presence_sse_service = None
         
         # Ollama integration (NEW - Phase 6.2)
         self.config_manager = None
@@ -144,7 +146,7 @@ class WebcamService:
             
             # Initialize HTTP service (presence detection)
             http_config = HTTPServiceConfig(
-                host="localhost",
+                host="0.0.0.0",
                 port=8767,
                 enable_history=True,
                 history_limit=100
@@ -158,7 +160,7 @@ class WebcamService:
             
             # ENABLED: Initialize SSE service (gesture streaming)
             sse_config = SSEServiceConfig(
-                host="localhost",
+                host="0.0.0.0",
                 port=8766,
                 gesture_events_only=True,  # Only stream gesture events
                 min_gesture_confidence=0.7,
@@ -166,6 +168,10 @@ class WebcamService:
             )
             self.sse_service = SSEDetectionService(sse_config)
             self.sse_service.setup_gesture_integration(self.event_publisher)
+            
+            # Initialize Presence SSE service
+            self.presence_sse_service = SSEPresenceService()
+            self.presence_sse_service.subscribe_to_events(self.event_publisher)
             
         except Exception as e:
             logger.error(f"Failed to initialize enhanced service: {e}")
@@ -202,6 +208,7 @@ class WebcamService:
             self.latest_frame_processor = None  # NEW: Clean up Latest Frame Processor
             self.http_service = None
             self.sse_service = None
+            self.presence_sse_service = None
             # Reset Ollama components
             self.description_service = None
             self.ollama_client = None
@@ -215,6 +222,9 @@ class WebcamService:
         detection_count = 0
         fps_target = 15
         frame_time = 1.0 / fps_target
+        
+        # Track presence for change detection
+        last_presence_state = None
         
         # Ollama processing disabled - running in gesture-only mode
         # if self.description_service:
@@ -248,7 +258,6 @@ class WebcamService:
                             # ENABLED: Simple event publishing - BOTH sync and async for SSE
                             if self.sse_service:
                                 try:
-                                    from src.service.events import ServiceEvent, EventType
                                     event = ServiceEvent(
                                         event_type=EventType.GESTURE_DETECTED,
                                         data={
@@ -281,6 +290,33 @@ class WebcamService:
                         self.http_service.current_status.last_detection = datetime.now()
                         self.http_service.current_status.detection_count += 1
                     
+                    # Publish PRESENCE_CHANGED event when presence changes
+                    if last_presence_state is not None and last_presence_state != human_result.human_present:
+                        try:
+                            presence_event = ServiceEvent(
+                                event_type=EventType.PRESENCE_CHANGED,
+                                data={
+                                    "human_present": human_result.human_present,
+                                    "confidence": human_result.confidence,
+                                    "timestamp": datetime.now().isoformat()
+                                },
+                                timestamp=datetime.now()
+                            )
+                            self.event_publisher.publish(presence_event)
+                            
+                            # Also publish async for SSE
+                            import asyncio
+                            try:
+                                loop = asyncio.get_event_loop()
+                                if loop.is_running():
+                                    asyncio.create_task(self.event_publisher.publish_async(presence_event))
+                            except RuntimeError:
+                                asyncio.run(self.event_publisher.publish_async(presence_event))
+                        except Exception as e:
+                            logger.error(f"Error publishing presence event: {e}")
+                    
+                    last_presence_state = human_result.human_present
+                    
                     # Print status update every 2 seconds (single updating line)
                     current_time = time.time()
                     if current_time - last_status_print >= 2.0:
@@ -308,7 +344,7 @@ class WebcamService:
                 import uvicorn
                 config = uvicorn.Config(
                     self.http_service.app, 
-                    host="localhost", 
+                    host="0.0.0.0", 
                     port=8767,
                     log_level="warning"
                 )
@@ -325,7 +361,7 @@ class WebcamService:
                 import uvicorn
                 config = uvicorn.Config(
                     self.sse_service.app,
-                    host="localhost",
+                    host="0.0.0.0",
                     port=8766,
                     log_level="warning"
                 )
@@ -334,6 +370,23 @@ class WebcamService:
                 await server.serve()
             except Exception as e:
                 logger.error(f"SSE service error: {e}")
+    
+    async def start_presence_sse_service(self):
+        """Start presence SSE service."""
+        if self.presence_sse_service:
+            try:
+                import uvicorn
+                config = uvicorn.Config(
+                    self.presence_sse_service.app,
+                    host="0.0.0.0",
+                    port=8764,
+                    log_level="warning"
+                )
+                server = uvicorn.Server(config)
+                logger.info("🚀 Presence SSE service starting on http://localhost:8764")
+                await server.serve()
+            except Exception as e:
+                logger.error(f"Presence SSE service error: {e}")
     
     async def run(self):
         """Run the enhanced service with all components."""
@@ -347,11 +400,11 @@ class WebcamService:
             detection_thread = threading.Thread(target=self.detection_loop, daemon=True)
             detection_thread.start()
             
-            # Start both services concurrently
-            # ENABLED: SSE service for gesture events
+            # Start all three services concurrently
             await asyncio.gather(
                 self.start_http_service(),
-                self.start_sse_service()
+                self.start_sse_service(),
+                self.start_presence_sse_service()
             )
             
         except Exception as e:
@@ -498,10 +551,11 @@ def main():
     service = WebcamService()
     service.setup_signal_handlers()
     
-    print("🎯 Webcam Detection Service with Gesture Recognition")
-    print("=" * 58)
+    print("🎯 Webcam Detection Service with Gesture Recognition & Presence SSE")
+    print("=" * 65)
     print("HTTP API: http://localhost:8767 (presence detection)")
-    print("SSE Stream: http://localhost:8766 (gesture events)")
+    print("Gesture SSE: http://localhost:8766 (gesture events)")
+    print("Presence SSE: http://localhost:8764 (presence changes)")
     print("Press Ctrl+C to stop")
     print()
     

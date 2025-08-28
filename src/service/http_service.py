@@ -306,6 +306,7 @@ class HTTPDetectionService:
     def setup_detection_integration(self, event_publisher: EventPublisher) -> None:
         """Setup integration with detection event publisher."""
         event_publisher.subscribe(self._handle_detection_event)
+        self._event_publisher = event_publisher
         self._event_publisher_subscribed = True
     
     def setup_description_integration(self, description_service) -> None:
