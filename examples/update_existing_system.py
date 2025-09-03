@@ -2,9 +2,6 @@
 """
 Update Existing System with Enhanced Room Descriptions
 
-NOTE: The room layout feature demonstrated here is currently disabled 
-in the main implementation. This example shows how it would work when enabled.
-
 This script shows how to update your existing webcam description system
 to use the new room-specific prompts with minimal changes.
 

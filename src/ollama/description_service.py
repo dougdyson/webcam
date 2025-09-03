@@ -95,16 +95,33 @@ class DescriptionServiceConfig:
         if not self.use_room_context:
             return self.default_prompt
         
-        base_prompt = """Describe what you see in this webcam. Be concise and specific. Ignore colors. Describe how Duggy looks. What clothing are they wearing (no colors)? What objects are present?"""
+        # Build structured prompt
+        prompt_parts = []
         
-#         if self.room_layout_context:
-#             base_prompt += f"ROOM LAYOUT REFERENCE:\n{self.room_layout_context}\n\n"
+        # Add room layout if available
+        if self.room_layout_context:
+            prompt_parts.append(f"ROOM LAYOUT REFERENCE:\n{self.room_layout_context}\n")
         
-#         base_prompt += """Format your response as: "Currently: [brief activity description]. Present: [people/objects]. Location details: [spatial info]."
-
-# IMPORTANT: Do NOT attempt to identify colors from the image as they are unreliable. Instead, use the room layout reference above for any color information needed for object identification. Focus on what would be useful context for a conversation."""
+        # Main description request
+        prompt_parts.append("Describe what you see in this webcam image.")
         
-        return base_prompt
+        # Structured sections for comprehensive description
+        prompt_parts.append("\nFocus on these aspects:")
+        prompt_parts.append("- PEOPLE: Who is present? How do they appear? What are they wearing (no colors)?")
+        prompt_parts.append("- ACTIVITIES: What are people doing?")
+        prompt_parts.append("- OBJECTS: What items are visible?")
+        prompt_parts.append("- SPATIAL CONTEXT: Where are things positioned?")
+        
+        # Output format
+        prompt_parts.append('\nFormat your response as: "Currently: [activity]. Present: [people/objects]. Location: [spatial details]."')
+        
+        # Color guidance
+        if self.room_layout_context:
+            prompt_parts.append("\nIMPORTANT: Use the room layout reference above for color information. Do NOT guess colors from the image.")
+        else:
+            prompt_parts.append("\nIMPORTANT: Ignore colors in your description.")
+        
+        return "\n".join(prompt_parts)
     
     def __post_init__(self):
         """Validate configuration parameters."""

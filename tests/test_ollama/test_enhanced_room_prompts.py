@@ -93,13 +93,14 @@ class TestEnhancedRoomPrompts:
         
         prompt = config.get_enhanced_prompt()
         
-        # Should contain simplified prompting elements
-        assert "Describe what you see" in prompt
-        assert "Be concise and specific" in prompt
-        assert "Ignore colors" in prompt
-        assert "Duggy" in prompt
-        assert "clothing" in prompt.lower()
-        assert "objects" in prompt.lower()
+        # Should contain key prompting elements
+        assert "PEOPLE:" in prompt
+        assert "ACTIVITIES:" in prompt  
+        assert "OBJECTS:" in prompt
+        assert "SPATIAL CONTEXT:" in prompt
+        assert "Currently:" in prompt
+        assert "Present:" in prompt
+        assert "Location:" in prompt
     
     def test_get_enhanced_prompt_with_room_layout_context(self):
         """Should include room layout reference in prompt."""
@@ -125,11 +126,13 @@ COLOR REFERENCE FOR IDENTIFICATION:
         
         prompt = config.get_enhanced_prompt()
         
-        # Room layout is currently commented out in implementation
-        # Should get the basic prompt
-        assert "Describe what you see" in prompt
-        assert "Ignore colors" in prompt
-        assert "Duggy" in prompt
+        # Should include the room layout
+        assert "ROOM LAYOUT REFERENCE:" in prompt
+        assert "Office Layout:" in prompt
+        assert "COLOR REFERENCE FOR IDENTIFICATION:" in prompt
+        assert "White/cream color" in prompt
+        assert "Black leather/fabric" in prompt
+        assert "Use the room layout reference" in prompt
     
     def test_enhanced_prompt_focuses_on_conversation_context(self):
         """Should focus on conversational AI context rather than generic description."""
@@ -140,11 +143,11 @@ COLOR REFERENCE FOR IDENTIFICATION:
         prompt = config.get_enhanced_prompt()
         
         # Should focus on conversational elements
-        # Should have basic descriptive elements
-        assert "Describe what you see" in prompt
-        assert "Duggy" in prompt
-        assert "clothing" in prompt.lower()
-        assert "objects" in prompt.lower()
+        # Should emphasize conversational elements
+        assert "PEOPLE:" in prompt
+        assert "wearing" in prompt.lower()
+        assert "doing" in prompt.lower()
+        assert "activities" in prompt.lower()
 
 
 class TestRoomLayoutIntegration:
@@ -399,9 +402,10 @@ COLOR REFERENCE FOR IDENTIFICATION:
         
         prompt = config.get_enhanced_prompt()
         
-        # Room layout features are commented out in implementation
-        assert "Describe what you see" in prompt
-        assert "Ignore colors" in prompt
+        # Should include room layout
+        assert "ROOM LAYOUT REFERENCE:" in prompt
+        assert "Living Room Layout:" in prompt
+        assert "Sectional Sofa" in prompt
     
     def test_bedroom_context(self):
         """Should work well with bedroom layout."""
@@ -428,9 +432,10 @@ COLOR REFERENCE FOR IDENTIFICATION:
         
         prompt = config.get_enhanced_prompt()
         
-        # Room layout features are commented out in implementation
-        assert "Describe what you see" in prompt
-        assert "Ignore colors" in prompt
+        # Should include room layout
+        assert "ROOM LAYOUT REFERENCE:" in prompt
+        assert "Bedroom Layout:" in prompt
+        assert "Queen size bed" in prompt
     
     def test_office_context(self):
         """Should work well with office layout.""" 
@@ -457,9 +462,10 @@ COLOR REFERENCE FOR IDENTIFICATION:
         
         prompt = config.get_enhanced_prompt()
         
-        # Room layout features are commented out in implementation
-        assert "Describe what you see" in prompt
-        assert "Ignore colors" in prompt
+        # Should include room layout
+        assert "ROOM LAYOUT REFERENCE:" in prompt
+        assert "Home Office Layout:" in prompt
+        assert "standing desk" in prompt
 
 
 class TestPromptStructureAndQuality:
@@ -473,10 +479,11 @@ class TestPromptStructureAndQuality:
         config = DescriptionServiceConfig(use_room_context=True)
         prompt = config.get_enhanced_prompt()
         
-        # Should have basic prompt structure
-        assert "Describe what you see" in prompt
-        assert "Be concise and specific" in prompt
-        assert "Ignore colors" in prompt
+        # Should have clear section headers
+        assert "PEOPLE:" in prompt
+        assert "ACTIVITIES:" in prompt
+        assert "OBJECTS:" in prompt
+        assert "SPATIAL CONTEXT:" in prompt
     
     def test_prompt_emphasizes_conversational_context(self):
         """Should emphasize elements useful for conversational AI."""
@@ -486,10 +493,11 @@ class TestPromptStructureAndQuality:
         config = DescriptionServiceConfig(use_room_context=True)
         prompt = config.get_enhanced_prompt()
         
-        # Should have basic descriptive elements  
-        assert "Duggy" in prompt
-        assert "clothing" in prompt.lower()
-        assert "objects" in prompt.lower()
+        # Should focus on conversational elements
+        assert "PEOPLE:" in prompt
+        assert "wearing" in prompt.lower()
+        assert "doing" in prompt.lower()
+        assert "activities" in prompt.lower()
     
     def test_prompt_provides_clear_output_format(self):
         """Should provide clear formatting instructions for AI responses."""
@@ -499,7 +507,8 @@ class TestPromptStructureAndQuality:
         config = DescriptionServiceConfig(use_room_context=True)
         prompt = config.get_enhanced_prompt()
         
-        # Should have basic prompt format
-        assert "Describe what you see" in prompt
-        assert "Be concise and specific" in prompt
-        # Structured format is commented out in implementation 
+        # Should specify output format clearly
+        assert "Format your response as:" in prompt
+        assert "Currently:" in prompt
+        assert "Present:" in prompt  
+        assert "Location:" in prompt 

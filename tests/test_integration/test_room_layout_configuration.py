@@ -23,7 +23,6 @@ except ImportError:
     DEPENDENCIES_AVAILABLE = False
 
 
-@pytest.mark.skip(reason="Room layout feature is currently commented out in implementation")
 class TestRoomLayoutFileLoading:
     """Test loading room layout from configuration files."""
     
@@ -79,8 +78,9 @@ COLOR REFERENCE FOR IDENTIFICATION:
         prompt = config.get_enhanced_prompt()
         
         # Should still work without room layout
-        assert "PEOPLE & ACTIVITIES" in prompt
-        assert "OBJECTS & ITEMS" in prompt
+        assert "PEOPLE:" in prompt
+        assert "OBJECTS:" in prompt
+        assert "ACTIVITIES:" in prompt
         # Should not include room layout section
         assert "ROOM LAYOUT REFERENCE:" not in prompt
     
@@ -112,7 +112,6 @@ COLOR REFERENCE FOR IDENTIFICATION:
             assert len(prompt) > 0
 
 
-@pytest.mark.skip(reason="Room layout feature is currently commented out in implementation")
 class TestWebcamServiceRoomLayoutIntegration:
     """Test integration of room layout with webcam service."""
     
@@ -164,7 +163,7 @@ class TestWebcamServiceRoomLayoutIntegration:
         prompt = config.get_enhanced_prompt()
         assert isinstance(prompt, str)
         assert len(prompt) > 0
-        assert "PEOPLE & ACTIVITIES" in prompt
+        assert "PEOPLE:" in prompt
     
     def test_service_configuration_validation(self):
         """Should validate room layout configuration parameters."""
@@ -185,7 +184,6 @@ class TestWebcamServiceRoomLayoutIntegration:
             assert isinstance(prompt, str)
 
 
-@pytest.mark.skip(reason="Room layout feature is currently commented out in implementation")
 class TestEndToEndRoomLayoutIntegration:
     """Test end-to-end room layout integration across all components."""
     
@@ -367,7 +365,6 @@ COLOR REFERENCE:
         asyncio.run(test_persistence())
 
 
-@pytest.mark.skip(reason="Room layout feature is currently commented out in implementation")
 class TestRoomLayoutConfigurationErrorHandling:
     """Test error handling in room layout configuration."""
     

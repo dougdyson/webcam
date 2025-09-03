@@ -70,11 +70,14 @@ class TestEnhancedRoomSystemOverview:
             config = DescriptionServiceConfig(use_room_context=True)
             prompt = config.get_enhanced_prompt()
             
-            # Verify prompt contains expected content
+            # Verify prompt contains expected structured sections
             assert "Describe what you see" in prompt
-            assert "Be concise and specific" in prompt
+            assert "PEOPLE:" in prompt
+            assert "ACTIVITIES:" in prompt
+            assert "OBJECTS:" in prompt
+            assert "SPATIAL CONTEXT:" in prompt
+            assert "Currently:" in prompt
             assert "Ignore colors" in prompt
-            assert "Duggy" in prompt
             
             # Test with room layout
             room_layout = "Test Room Layout:\n- Desk: White desk\n- Chair: Black chair"
@@ -84,9 +87,10 @@ class TestEnhancedRoomSystemOverview:
             )
             
             prompt_with_layout = config_with_layout.get_enhanced_prompt()
-            # Room layout is currently commented out in implementation
-            # Just verify we get the base prompt
-            assert "Describe what you see" in prompt_with_layout
+            # Now room layout should be included
+            assert "ROOM LAYOUT REFERENCE:" in prompt_with_layout
+            assert "Test Room Layout:" in prompt_with_layout
+            assert "Use the room layout reference" in prompt_with_layout
             
         except ImportError:
             pytest.skip("Enhanced prompting system not available")
@@ -152,9 +156,10 @@ COLOR REFERENCE:
                 
                 prompt = config.get_enhanced_prompt()
                 
-                # Should get basic prompt (room layout commented out)
+                # Should include room-specific content
                 assert "Describe what you see" in prompt
-                assert "Ignore colors" in prompt
+                assert "ROOM LAYOUT REFERENCE:" in prompt
+                assert room_layout in prompt
                 
         except ImportError:
             pytest.skip("General purpose room support not available")
@@ -180,10 +185,11 @@ COLOR REFERENCE FOR IDENTIFICATION:
             
             prompt = config.get_enhanced_prompt()
             
-            # Should get basic prompt that ignores colors
-            assert "Describe what you see" in prompt
-            assert "Ignore colors" in prompt
-            # Room layout features are commented out in implementation
+            # Should include color reference in room layout
+            assert "ROOM LAYOUT REFERENCE:" in prompt
+            assert "COLOR REFERENCE FOR IDENTIFICATION:" in prompt
+            assert "Gray fabric upholstery" in prompt
+            assert "Use the room layout reference" in prompt
             
         except ImportError:
             pytest.skip("Color reference system not available")
@@ -196,10 +202,11 @@ COLOR REFERENCE FOR IDENTIFICATION:
             config = DescriptionServiceConfig(use_room_context=True)
             prompt = config.get_enhanced_prompt()
             
-            # Should have basic descriptive elements
-            assert "Duggy" in prompt
-            assert "clothing" in prompt.lower()
-            assert "objects" in prompt.lower()
+            # Should emphasize conversational elements
+            assert "PEOPLE:" in prompt
+            assert "ACTIVITIES:" in prompt
+            assert "wearing" in prompt.lower()
+            assert "doing" in prompt.lower()
                 
         except ImportError:
             pytest.skip("Conversational AI focus not available")
@@ -212,10 +219,11 @@ COLOR REFERENCE FOR IDENTIFICATION:
             config = DescriptionServiceConfig(use_room_context=True)
             prompt = config.get_enhanced_prompt()
             
-            # Should have basic prompt structure
-            assert "Describe what you see" in prompt
-            assert "Be concise and specific" in prompt
-            # Structured format is commented out in implementation
+            # Should specify clear output format
+            assert "Format your response as:" in prompt
+            assert "Currently:" in prompt
+            assert "Present:" in prompt
+            assert "Location:" in prompt
                 
         except ImportError:
             pytest.skip("Structured output format not available")
