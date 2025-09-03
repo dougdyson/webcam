@@ -2,6 +2,9 @@
 """
 Test Room Layout Integration
 
+NOTE: The room layout feature tested here is currently disabled 
+in the main implementation. This example shows how it would work when enabled.
+
 Simple test to verify that room layout context is properly included
 in DescriptionResult for conversational AI integration.
 """

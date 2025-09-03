@@ -2,6 +2,9 @@
 """
 Enhanced Room Description Example
 
+NOTE: The room layout feature demonstrated here is currently disabled 
+in the main implementation. This example shows how it would work when enabled.
+
 This example demonstrates how to use the improved description service
 with room-specific context and layout information for better, more
 consistent descriptions suitable for conversational AI integration.
