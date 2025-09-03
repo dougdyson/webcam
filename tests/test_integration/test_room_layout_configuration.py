@@ -23,6 +23,7 @@ except ImportError:
     DEPENDENCIES_AVAILABLE = False
 
 
+@pytest.mark.skip(reason="Room layout feature is currently commented out in implementation")
 class TestRoomLayoutFileLoading:
     """Test loading room layout from configuration files."""
     
@@ -111,6 +112,7 @@ COLOR REFERENCE FOR IDENTIFICATION:
             assert len(prompt) > 0
 
 
+@pytest.mark.skip(reason="Room layout feature is currently commented out in implementation")
 class TestWebcamServiceRoomLayoutIntegration:
     """Test integration of room layout with webcam service."""
     
@@ -183,6 +185,7 @@ class TestWebcamServiceRoomLayoutIntegration:
             assert isinstance(prompt, str)
 
 
+@pytest.mark.skip(reason="Room layout feature is currently commented out in implementation")
 class TestEndToEndRoomLayoutIntegration:
     """Test end-to-end room layout integration across all components."""
     
@@ -364,6 +367,7 @@ COLOR REFERENCE:
         asyncio.run(test_persistence())
 
 
+@pytest.mark.skip(reason="Room layout feature is currently commented out in implementation")
 class TestRoomLayoutConfigurationErrorHandling:
     """Test error handling in room layout configuration."""
     

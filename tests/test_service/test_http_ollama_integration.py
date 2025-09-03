@@ -180,8 +180,11 @@ class TestHTTPOllamaErrorResponse:
         with TestClient(service.app) as client:
             response = client.get("/description/latest")
             
-            # Should return 404 or specific error response when no description available
-            assert response.status_code in [404, 204, 503], "Should handle no description gracefully"
+            # Should return 200 with no_description status when no description available
+            assert response.status_code == 200, "Should handle no description gracefully"
+            data = response.json()
+            assert data["status"] == "no_description"
+            assert data["description"] is None
             
             if response.status_code == 404:
                 data = response.json()

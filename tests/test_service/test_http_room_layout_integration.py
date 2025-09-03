@@ -53,7 +53,6 @@ FURNITURE:
         )
         
         mock_description_service.get_latest_description.return_value = mock_result
-        mock_description_service.ollama_client.is_available.return_value = True
         
         service.setup_description_integration(mock_description_service)
         
@@ -94,7 +93,6 @@ FURNITURE:
         )
         
         mock_description_service.get_latest_description.return_value = mock_result
-        mock_description_service.ollama_client.is_available.return_value = True
         
         service.setup_description_integration(mock_description_service)
         
@@ -128,7 +126,6 @@ FURNITURE:
         )
         
         mock_description_service.get_latest_description.return_value = mock_result
-        mock_description_service.ollama_client.is_available.return_value = True
         
         service.setup_description_integration(mock_description_service)
         
@@ -165,7 +162,6 @@ FURNITURE:
         )
         
         mock_description_service.get_latest_description.return_value = mock_result
-        mock_description_service.ollama_client.is_available.return_value = True
         
         service.setup_description_integration(mock_description_service)
         
@@ -207,7 +203,6 @@ FURNITURE:
         mock_result.to_dict = Mock(return_value=expected_dict)
         
         mock_description_service.get_latest_description.return_value = mock_result
-        mock_description_service.ollama_client.is_available.return_value = True
         
         service.setup_description_integration(mock_description_service)
         
@@ -266,7 +261,6 @@ class TestHTTPRoomLayoutBackwardCompatibility:
         }
         
         mock_description_service.get_latest_description.return_value = mock_result
-        mock_description_service.ollama_client.is_available.return_value = True
         
         service.setup_description_integration(mock_description_service)
         
@@ -361,7 +355,6 @@ COLOR REFERENCE FOR IDENTIFICATION:
         )
         
         mock_description_service.get_latest_description.return_value = mock_result
-        mock_description_service.ollama_client.is_available.return_value = True
         
         service.setup_description_integration(mock_description_service)
         
@@ -416,7 +409,6 @@ COLOR PALETTE:
         )
         
         mock_description_service.get_latest_description.return_value = mock_result
-        mock_description_service.ollama_client.is_available.return_value = True
         
         service.setup_description_integration(mock_description_service)
         
@@ -457,7 +449,6 @@ COLOR PALETTE:
         )
         
         mock_description_service.get_latest_description.return_value = mock_result
-        mock_description_service.ollama_client.is_available.return_value = True
         
         service.setup_description_integration(mock_description_service)
         
