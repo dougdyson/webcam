@@ -3,7 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/webcam-detection.svg)](https://badge.fury.io/py/webcam-detection)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests: 732/732](https://img.shields.io/badge/tests-732%2F732%20passing-brightgreen.svg)](README.md#testing)
+[![Tests: 734/734](https://img.shields.io/badge/tests-734%2F734%20passing-brightgreen.svg)](README.md#testing)
 
 **Local, real-time human detection system with AI-powered scene descriptions and gesture recognition.**
 
@@ -11,8 +11,8 @@ Perfect for guard clauses in speaker verification, smart home automation, securi
 
 ## ✨ What's New
 
-- 🚀 **Production Ready**: 732 comprehensive tests, enterprise-grade reliability
-- 🤖 **AI Descriptions**: Local Ollama integration with Gemma3 models  
+- 🚀 **Production Ready**: 734 comprehensive tests, enterprise-grade reliability
+- 🤖 **AI Descriptions**: Local Ollama integration with room-aware context  
 - 🖐️ **Gesture Recognition**: Stop gesture detection for voice control
 - 📡 **Real-time Streaming**: SSE events for web dashboards
 - ⚡ **Extended Range**: 3x detection range with multi-modal fusion
@@ -27,7 +27,7 @@ Perfect for guard clauses in speaker verification, smart home automation, securi
 - **🤖 AI Descriptions**: Optional Ollama integration for scene analysis
 - **🖐️ Gesture Control**: Hand gesture detection for voice assistants
 - **📐 Extended Range**: Works from desk distance to room distance
-- **🧪 Production Ready**: 732 tests, battle-tested architecture
+- **🧪 Production Ready**: 734 tests, battle-tested architecture
 
 ## 📦 Quick Start
 
@@ -219,7 +219,7 @@ Real-time presence for kiosks, digital signage, and interactive displays.
 
 ## 🧪 Testing
 
-Comprehensive test suite with 732 tests covering all components, beautifully organized to mirror the source structure:
+Comprehensive test suite with 734 tests covering all components, beautifully organized to mirror the source structure:
 
 ```bash
 # Run all tests
@@ -292,7 +292,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🌟 Why Choose Webcam Detection?
 
-- **🎯 Proven**: 732 comprehensive tests, production-ready
+- **🎯 Proven**: 734 comprehensive tests, production-ready
 - **⚡ Fast**: Optimized for real-time performance (<100ms latency)
 - **🔒 Private**: 100% local processing, no cloud dependencies
 - **🎛️ Flexible**: Extensive configuration and integration options

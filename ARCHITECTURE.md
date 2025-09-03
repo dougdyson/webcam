@@ -70,7 +70,8 @@ Detection Pipeline → EventPublisher → Service Layer
 
 ### Ollama Integration (`src/ollama/`)
 - **OllamaClient**: Local Ollama service integration (localhost:11434)
-- **DescriptionService**: Async AI-powered scene descriptions
+- **DescriptionService**: Async AI-powered scene descriptions with room context
+- **Room Layout Support**: Optional room-specific prompts for better descriptions
 - **Smart Caching**: MD5-based frame caching with 5-minute TTL
 - **Error Resilience**: Comprehensive fallback handling and retry policies
 
