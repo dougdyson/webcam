@@ -40,6 +40,8 @@ from src.camera import CameraManager
 from src.camera.config import CameraConfig
 from src.processing.enhanced_frame_processor import EnhancedFrameProcessor, EnhancedProcessorConfig
 from src.processing.latest_frame_processor import LatestFrameProcessor
+from src.processing.reference_manager import ReferenceManager
+from src.processing.presence_gate import PresenceGate, PresenceGateConfig
 
 # Service layer
 from src.service.http_service import HTTPDetectionService, HTTPServiceConfig
@@ -88,17 +90,27 @@ class WebcamService:
         self.ollama_client = None
         self.ollama_image_processor = None
         self.description_service = None
-        
+
         # State
         self.is_running = False
         self._shutdown_requested = False
         self._description_service_failed = False
+        
+        # Presence gating
+        self.reference_manager: Optional[ReferenceManager] = None
+        self.presence_gate: Optional[PresenceGate] = None
+        self._gating_enabled: bool = False
         
     def initialize(self):
         """Initialize all components with proper error handling."""
         try:
             # Step 1: Initialize configuration - skip Ollama config for gesture-only mode
             self.config_manager = ConfigManager()
+            detection_cfg = {}
+            try:
+                detection_cfg = self.config_manager.load_detection_config()
+            except Exception:
+                detection_cfg = {}
             # self.ollama_config = self.config_manager.load_ollama_config()  # DISABLED
             
             # Step 2: Initialize camera (quiet)
@@ -173,6 +185,25 @@ class WebcamService:
             self.presence_sse_service = SSEPresenceService()
             self.presence_sse_service.subscribe_to_events(self.event_publisher)
             
+            # Presence gating (behind config flag)
+            gating_cfg = detection_cfg.get('gating', {}) if isinstance(detection_cfg, dict) else {}
+            self._gating_enabled = bool(gating_cfg.get('enabled', False))
+            if self._gating_enabled:
+                refs_cfg = detection_cfg.get('refs', {}) if isinstance(detection_cfg, dict) else {}
+                max_refs = int(refs_cfg.get('max_per_bucket', 3))
+                self.reference_manager = ReferenceManager(max_references=max_refs)
+                pg_cfg = PresenceGateConfig(
+                    gating_enabled=True,
+                    phash_threshold_same=int(gating_cfg.get('phash_threshold_same', 10)),
+                    ssim_threshold_same=float(gating_cfg.get('ssim_threshold_same', 0.90)),
+                    enter_k=int(gating_cfg.get('hysteresis', {}).get('enter_k', 3)),
+                    exit_l=int(gating_cfg.get('hysteresis', {}).get('exit_l', 5)),
+                    cooldown_ms=int(gating_cfg.get('cooldown_ms', 1000)),
+                    capture_stable_seconds=float(refs_cfg.get('capture_stable_seconds', 5.0)),
+                    max_refs=max_refs,
+                )
+                self.presence_gate = PresenceGate(self.reference_manager, pg_cfg)
+            
         except Exception as e:
             logger.error(f"Failed to initialize enhanced service: {e}")
             # Clean up any partially initialized components
@@ -237,6 +268,16 @@ class WebcamService:
                 if frame is not None:
                     # Simple detection processing - Ollama disabled for gesture-only mode
                     human_result = self.latest_frame_processor.process_frame(frame)
+
+                    # Apply presence gating if enabled
+                    gated_state = human_result.human_present
+                    if self._gating_enabled and self.presence_gate is not None:
+                        try:
+                            gated = self.presence_gate.process(frame, human_result, timestamp_s=time.time())
+                            gated_state = gated.human_present
+                        except Exception:
+                            # On gating errors, fall back to raw detection
+                            gated_state = human_result.human_present
                     
                     detection_count += 1
                     
@@ -245,7 +286,7 @@ class WebcamService:
                     gesture_confidence = 0.0
                     
                     # Simple threshold check with shoulder validation
-                    if human_result.human_present and human_result.confidence > 0.6:
+                    if gated_state and human_result.confidence > 0.6:
                         # Direct gesture detection with pose landmarks for shoulder reference
                         pose_landmarks = getattr(human_result, '_original_pose_landmarks', None)
                         
@@ -285,18 +326,18 @@ class WebcamService:
                     
                     # Update HTTP service status (simple)
                     if self.http_service:
-                        self.http_service.current_status.human_present = human_result.human_present
+                        self.http_service.current_status.human_present = gated_state
                         self.http_service.current_status.confidence = human_result.confidence
                         self.http_service.current_status.last_detection = datetime.now()
                         self.http_service.current_status.detection_count += 1
                     
                     # Publish PRESENCE_CHANGED event when presence changes
-                    if last_presence_state is not None and last_presence_state != human_result.human_present:
+                    if last_presence_state is not None and last_presence_state != gated_state:
                         try:
                             presence_event = ServiceEvent(
                                 event_type=EventType.PRESENCE_CHANGED,
                                 data={
-                                    "human_present": human_result.human_present,
+                                    "human_present": gated_state,
                                     "confidence": human_result.confidence,
                                     "timestamp": datetime.now().isoformat()
                                 },
@@ -315,12 +356,12 @@ class WebcamService:
                         except Exception as e:
                             logger.error(f"Error publishing presence event: {e}")
                     
-                    last_presence_state = human_result.human_present
+                    last_presence_state = gated_state
                     
                     # Print status update every 2 seconds (single updating line)
                     current_time = time.time()
                     if current_time - last_status_print >= 2.0:
-                        status = "👤 HUMAN" if human_result.human_present else "❌ NO HUMAN"
+                        status = "👤 HUMAN" if gated_state else "❌ NO HUMAN"
                         # Clean gesture display with current status
                         gesture_display = f"{gesture_status} ({gesture_confidence:.2f})" if gesture_confidence > 0 else gesture_status
                         # Simplified status - no Ollama processing indicators needed
