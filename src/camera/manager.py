@@ -88,8 +88,10 @@ class CameraManager:
         self._total_reconnection_attempts = 0
         self._successful_reconnections = 0
         self._failed_frames = 0
+        self._consecutive_failed_frames = 0  # Track consecutive failures
         self._last_reconnection_time = 0.0
         self._max_reconnection_attempts = 5
+        self._max_consecutive_failures = 10  # Allow some failures before reconnecting
         self._is_healthy = True
         
         logger.info(f"Initializing camera manager with config: {config}")
@@ -259,18 +261,27 @@ class CameraManager:
             logger.debug(f"Frame read result: ret={ret}, frame_is_none={frame is None}")
             
             if not ret or frame is None:
-                logger.warning("Failed to read frame from camera")
-                self._is_healthy = False
+                self._consecutive_failed_frames += 1
                 self._failed_frames += 1
                 
-                # Check if we should wait for backoff before attempting reconnection
-                if self._should_wait_for_backoff():
-                    return None  # Return None immediately if still in backoff period
-                
-                return self._attempt_reconnection()
+                # Only log and attempt reconnection after multiple consecutive failures
+                if self._consecutive_failed_frames >= self._max_consecutive_failures:
+                    logger.warning(f"Failed to read frame from camera after {self._consecutive_failed_frames} consecutive attempts")
+                    self._is_healthy = False
+                    
+                    # Check if we should wait for backoff before attempting reconnection
+                    if self._should_wait_for_backoff():
+                        return None  # Return None immediately if still in backoff period
+                    
+                    return self._attempt_reconnection()
+                else:
+                    # Just return None for occasional failures without reconnecting
+                    logger.debug(f"Frame read failed ({self._consecutive_failed_frames}/{self._max_consecutive_failures} consecutive failures)")
+                    return None
             
             # Success - update metrics and return frame
             logger.debug("Frame read successful")
+            self._consecutive_failed_frames = 0  # Reset consecutive failure counter
             self._update_performance_metrics()
             self._is_healthy = True
             return frame
@@ -352,6 +363,7 @@ class CameraManager:
             if self._cap and self._cap.isOpened():
                 self._successful_reconnections += 1
                 self._reconnection_attempts = 0  # Reset counter on success
+                self._consecutive_failed_frames = 0  # Reset consecutive failure counter
                 self._is_healthy = True
                 logger.info("Camera reconnection successful")
                 
