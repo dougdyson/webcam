@@ -37,6 +37,8 @@ def compute_phash(img: np.ndarray, size: int = 32, dct_size: int = 8) -> int:
     gray = _ensure_gray(img)
     # Resize to square
     small = cv2.resize(gray, (size, size), interpolation=cv2.INTER_AREA)
+    # Slight blur to reduce sensor noise/AEC flicker impact on DCT
+    small = cv2.GaussianBlur(small, (3, 3), 0)
     small_f = np.float32(small)
     dct = cv2.dct(small_f)
     # Top-left block
@@ -73,6 +75,9 @@ def edge_ssim(img1: np.ndarray, img2: np.ndarray, size: Tuple[int, int] = (320, 
     if size is not None:
         g1 = cv2.resize(g1, size, interpolation=cv2.INTER_AREA)
         g2 = cv2.resize(g2, size, interpolation=cv2.INTER_AREA)
+    # Slight blur to stabilize edges
+    g1 = cv2.GaussianBlur(g1, (3, 3), 0)
+    g2 = cv2.GaussianBlur(g2, (3, 3), 0)
 
     def sobel_mag(g: np.ndarray) -> np.ndarray:
         gx = cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=3)
@@ -103,4 +108,3 @@ def edge_ssim(img1: np.ndarray, img2: np.ndarray, size: Tuple[int, int] = (320, 
     ssim = numerator / denominator
     # Clip to [0,1] for robustness
     return float(max(0.0, min(1.0, ssim)))
-

@@ -8,10 +8,10 @@ smoothing_window: 5
 # Presence gating configuration
 gating:
   enabled: true
-  phash_threshold_same: 10
-  ssim_threshold_same: 0.90
+  phash_threshold_same: 14
+  ssim_threshold_same: 0.94
   hysteresis:
-    enter_k: 3
+    enter_k: 4
     exit_l: 5
   cooldown_ms: 1000
 

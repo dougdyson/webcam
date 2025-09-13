@@ -33,6 +33,7 @@ class ReferenceManager:
     def add_reference(self, img: np.ndarray) -> None:
         gray = img if img.ndim == 2 else cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         small = cv2.resize(gray, self._size, interpolation=cv2.INTER_AREA)
+        small = cv2.GaussianBlur(small, (3, 3), 0)
         h = compute_phash(small)
         self._refs.append(_Reference(gray_small=small, phash=h))
         if len(self._refs) > self._max:
@@ -44,6 +45,7 @@ class ReferenceManager:
             return None, None
         gray = img if img.ndim == 2 else cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         small = cv2.resize(gray, self._size, interpolation=cv2.INTER_AREA)
+        small = cv2.GaussianBlur(small, (3, 3), 0)
         h = compute_phash(small)
 
         best_ref = None
@@ -54,4 +56,3 @@ class ReferenceManager:
                 best_dist = d
                 best_ref = r.gray_small
         return best_ref, best_dist
-
