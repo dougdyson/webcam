@@ -186,7 +186,11 @@ class VisionVerificationGate:
         """
         try:
             self._total_verifications += 1
+
+            # Time the vision verification
+            start_time = time.time()
             result = self.vision_verifier.verify_human_presence(frame)
+            duration_ms = (time.time() - start_time) * 1000
 
             if result:
                 # Track in history for analysis
@@ -194,8 +198,16 @@ class VisionVerificationGate:
                     "timestamp": timestamp_s,
                     "detected": result.human_detected,
                     "confidence": result.confidence,
-                    "raw_response": result.raw_response
+                    "raw_response": result.raw_response,
+                    "duration_ms": duration_ms
                 })
+
+                # Log timing
+                logger.info(
+                    f"[VisionGate] Vision check took {duration_ms:.0f}ms "
+                    f"(result: {'human' if result.human_detected else 'empty'}, "
+                    f"confidence: {result.confidence})"
+                )
 
             return result
 

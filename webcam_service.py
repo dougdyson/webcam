@@ -57,8 +57,8 @@ from src.ollama.image_processing import OllamaImageProcessor
 from src.ollama.snapshot_buffer import Snapshot, SnapshotMetadata
 from src.ollama.vision_verifier import VisionPresenceVerifier
 
-# Configure logging to be quieter
-logging.basicConfig(level=logging.WARNING, format='%(message)s')  # Only warnings and errors
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(message)s')  # Show info, warnings, and errors
 logger = logging.getLogger(__name__)
 
 class WebcamService:
