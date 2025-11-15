@@ -44,6 +44,10 @@ def human_frame(fixtures_dir):
     """Load a real frame with human visible."""
     # Try common naming patterns
     candidates = [
+        "human_standing.png",
+        "human_sitting.png",
+        "human_visible.png",
+        "human_closeup.png",
         "human_standing.jpg",
         "human_visible.jpg",
         "human_closeup.jpg",
@@ -57,7 +61,7 @@ def human_frame(fixtures_dir):
             return frame
 
     # If no human frames found, list what we have
-    available = list(fixtures_dir.glob("*.jpg"))
+    available = list(fixtures_dir.glob("*.png")) + list(fixtures_dir.glob("*.jpg"))
     pytest.skip(f"No human frames found. Available: {[f.name for f in available]}")
 
 
@@ -66,6 +70,10 @@ def empty_frame(fixtures_dir):
     """Load a real frame of empty kitchen."""
     # Try common naming patterns
     candidates = [
+        "empty_room.png",
+        "empty_lights_on.png",
+        "empty_kitchen.png",
+        "empty.png",
         "empty_room.jpg",
         "empty_lights_on.jpg",
         "empty_kitchen.jpg",
@@ -80,7 +88,7 @@ def empty_frame(fixtures_dir):
             return frame
 
     # If no empty frames found, list what we have
-    available = list(fixtures_dir.glob("*.jpg"))
+    available = list(fixtures_dir.glob("*.png")) + list(fixtures_dir.glob("*.jpg"))
     pytest.skip(f"No empty frames found. Available: {[f.name for f in available]}")
 
 
