@@ -55,6 +55,7 @@ from src.ollama.client import OllamaClient, OllamaConfig
 from src.ollama.description_service import DescriptionService, DescriptionServiceConfig
 from src.ollama.image_processing import OllamaImageProcessor
 from src.ollama.snapshot_buffer import Snapshot, SnapshotMetadata
+from src.ollama.vision_verifier import VisionPresenceVerifier
 
 # Configure logging to be quieter
 logging.basicConfig(level=logging.WARNING, format='%(message)s')  # Only warnings and errors
@@ -90,6 +91,7 @@ class WebcamService:
         self.ollama_client = None
         self.ollama_image_processor = None
         self.description_service = None
+        self.vision_verifier = None
 
         # State
         self.is_running = False
@@ -104,14 +106,13 @@ class WebcamService:
     def initialize(self):
         """Initialize all components with proper error handling."""
         try:
-            # Step 1: Initialize configuration - skip Ollama config for gesture-only mode
+            # Step 1: Initialize configuration
             self.config_manager = ConfigManager()
             detection_cfg = {}
             try:
                 detection_cfg = self.config_manager.load_detection_config()
             except Exception:
                 detection_cfg = {}
-            # self.ollama_config = self.config_manager.load_ollama_config()  # DISABLED
             
             # Step 2: Initialize camera (quiet)
             camera_config = CameraConfig()
@@ -131,12 +132,45 @@ class WebcamService:
                 detector=self.detector
             )
             
-            # Step 5: Ollama components - DISABLED for gesture-only mode
-            logger.info("📍 Ollama analysis disabled - running in gesture-only mode")
-            self.description_service = None
-            self.ollama_client = None
-            self.ollama_image_processor = None
-            self._description_service_failed = False  # Not failed, intentionally disabled
+            # Step 5: Ollama components - ENABLED for vision verification
+            try:
+                # Load Ollama config
+                self.ollama_config = self.config_manager.load_ollama_config()
+
+                # Initialize OllamaClient for vision verification
+                client_config = self.ollama_config.get('client', {})
+                ollama_cfg = OllamaConfig(
+                    model=client_config.get('model', 'qwen3-vl:2b-instruct-q4_K_M'),
+                    base_url=client_config.get('base_url', 'http://localhost:11434'),
+                    timeout=client_config.get('timeout_seconds', 40.0),
+                    max_retries=client_config.get('max_retries', 2)
+                )
+                self.ollama_client = OllamaClient(ollama_cfg)
+
+                # Initialize VisionPresenceVerifier (lightweight, no DescriptionService)
+                self.vision_verifier = VisionPresenceVerifier(
+                    ollama_client=self.ollama_client,
+                    cache_ttl_seconds=30  # Match verification interval
+                )
+
+                # Check if Ollama is available
+                if self.ollama_client.is_available():
+                    logger.info(f"✓ Vision verification enabled with {ollama_cfg.model}")
+                else:
+                    logger.warning("⚠ Ollama service not available - vision verification will fail")
+
+                # DescriptionService remains disabled (we only need verification)
+                self.description_service = None
+                self.ollama_image_processor = None
+                self._description_service_failed = False
+
+            except Exception as e:
+                logger.warning(f"⚠ Failed to initialize vision verification: {e}")
+                self.ollama_client = None
+                self.vision_verifier = None
+                self.description_service = None
+                self.ollama_image_processor = None
+                self._description_service_failed = False
             
             # DISABLED: Initialize enhanced frame processor with BALANCED SETTINGS (prevent false positives but still work)
             # processor_config = EnhancedProcessorConfig(
@@ -243,23 +277,26 @@ class WebcamService:
             # Reset Ollama components
             self.description_service = None
             self.ollama_client = None
+            self.vision_verifier = None
             self.ollama_config = None
             self.config_manager = None
             self.ollama_image_processor = None
     
     def detection_loop(self):
-        """Main detection loop - Latest Frame processing with wait-for-completion descriptions."""        
+        """Main detection loop - Latest Frame processing with vision verification."""
         last_status_print = 0
         detection_count = 0
         fps_target = 15
         frame_time = 1.0 / fps_target
-        
+
         # Track presence for change detection
         last_presence_state = None
-        
-        # Ollama processing disabled - running in gesture-only mode
-        # if self.description_service:
-        #     self.latest_frame_processor.set_description_service(self.description_service)
+
+        # Vision verification tracking
+        last_vision_verification = 0
+        vision_verification_interval = 30.0  # 30 seconds
+        vision_agree_count = 0
+        vision_disagree_count = 0
         
         while self.is_running and not self._shutdown_requested:
             try:
@@ -280,7 +317,46 @@ class WebcamService:
                             gated_state = human_result.human_present
                     
                     detection_count += 1
-                    
+
+                    # Vision verification (every 30 seconds)
+                    current_time = time.time()
+                    if (self.vision_verifier is not None and
+                        current_time - last_vision_verification >= vision_verification_interval):
+
+                        try:
+                            vision_result = self.vision_verifier.verify_human_presence(frame)
+
+                            if vision_result:
+                                # Compare with MediaPipe gated state
+                                mediapipe_state = gated_state
+                                vision_state = vision_result.human_detected
+
+                                # Track agreement/disagreement
+                                if mediapipe_state == vision_state:
+                                    vision_agree_count += 1
+                                    match_symbol = "✓"
+                                else:
+                                    vision_disagree_count += 1
+                                    match_symbol = "✗"
+
+                                # Structured logging for analysis
+                                total_checks = vision_agree_count + vision_disagree_count
+                                agreement_rate = (vision_agree_count / total_checks * 100) if total_checks > 0 else 0
+
+                                logger.warning(
+                                    f"[Vision Verification] "
+                                    f"MediaPipe: {'present' if mediapipe_state else 'absent'} | "
+                                    f"Vision: {'yes' if vision_state else 'no'} ({vision_result.confidence}) | "
+                                    f"Match: {match_symbol} | "
+                                    f"Agreement: {agreement_rate:.1f}% ({vision_agree_count}/{total_checks})"
+                                )
+
+                                last_vision_verification = current_time
+
+                        except Exception as e:
+                            logger.error(f"Vision verification error: {e}")
+                            last_vision_verification = current_time  # Still update to avoid spam
+
                     # Gesture detection with clean status tracking
                     gesture_status = "None"
                     gesture_confidence = 0.0
@@ -357,15 +433,16 @@ class WebcamService:
                             logger.error(f"Error publishing presence event: {e}")
                     
                     last_presence_state = gated_state
-                    
+
                     # Print status update every 2 seconds (single updating line)
-                    current_time = time.time()
                     if current_time - last_status_print >= 2.0:
                         status = "👤 HUMAN" if gated_state else "❌ NO HUMAN"
                         # Clean gesture display with current status
                         gesture_display = f"{gesture_status} ({gesture_confidence:.2f})" if gesture_confidence > 0 else gesture_status
-                        # Simplified status - no Ollama processing indicators needed
-                        print(f"\r{status} | Conf: {human_result.confidence:.2f} | Gesture: {gesture_display} | Frames: {detection_count} | FPS: {fps_target} | ⚡ GESTURE-ONLY", end='', flush=True)
+                        # Add vision verification stats
+                        total_checks = vision_agree_count + vision_disagree_count
+                        vision_status = f"Vision: {vision_agree_count}/{total_checks}" if total_checks > 0 else "Vision: pending"
+                        print(f"\r{status} | Conf: {human_result.confidence:.2f} | Gesture: {gesture_display} | {vision_status} | Frames: {detection_count} | FPS: {fps_target}", end='', flush=True)
                         last_status_print = current_time
                     
                     time.sleep(frame_time)
