@@ -237,7 +237,36 @@ class WebcamService:
                     max_refs=max_refs,
                 )
                 self.presence_gate = PresenceGate(self.reference_manager, pg_cfg)
-            
+
+                # Vision verification gate (wraps PresenceGate)
+                vision_cfg = gating_cfg.get('vision_verification', {})
+                vision_enabled = bool(vision_cfg.get('enabled', False))
+
+                if vision_enabled and self.vision_verifier:
+                    from src.processing.vision_verification_gate import (
+                        VisionVerificationGate,
+                        VisionVerificationConfig
+                    )
+
+                    vv_config = VisionVerificationConfig(
+                        max_blocks_per_session=int(vision_cfg.get('max_blocks_per_session', 3)),
+                        recapture_on_block=bool(vision_cfg.get('recapture_on_block', True)),
+                        verify_enter_only=bool(vision_cfg.get('verify_enter_only', True))
+                    )
+
+                    self.verification_gate = VisionVerificationGate(
+                        presence_gate=self.presence_gate,
+                        vision_verifier=self.vision_verifier,
+                        config=vv_config
+                    )
+                    logger.info("✓ Vision verification gate enabled")
+                else:
+                    self.verification_gate = None
+                    if vision_enabled and not self.vision_verifier:
+                        logger.warning("⚠ Vision verification enabled but vision_verifier not available")
+            else:
+                self.verification_gate = None
+
         except Exception as e:
             logger.error(f"Failed to initialize enhanced service: {e}")
             # Clean up any partially initialized components
@@ -283,7 +312,7 @@ class WebcamService:
             self.ollama_image_processor = None
     
     def detection_loop(self):
-        """Main detection loop - Latest Frame processing with vision verification."""
+        """Main detection loop with presence gating and vision verification."""
         last_status_print = 0
         detection_count = 0
         fps_target = 15
@@ -291,12 +320,6 @@ class WebcamService:
 
         # Track presence for change detection
         last_presence_state = None
-
-        # Vision verification tracking
-        last_vision_verification = 0
-        vision_verification_interval = 30.0  # 30 seconds
-        vision_agree_count = 0
-        vision_disagree_count = 0
         
         while self.is_running and not self._shutdown_requested:
             try:
@@ -306,56 +329,21 @@ class WebcamService:
                     # Simple detection processing - Ollama disabled for gesture-only mode
                     human_result = self.latest_frame_processor.process_frame(frame)
 
-                    # Apply presence gating if enabled
+                    # Apply presence gating (with optional vision verification)
                     gated_state = human_result.human_present
-                    if self._gating_enabled and self.presence_gate is not None:
+                    if self._gating_enabled:
                         try:
-                            gated = self.presence_gate.process(frame, human_result, timestamp_s=time.time())
-                            gated_state = gated.human_present
+                            # Use verification gate if available, otherwise use presence gate
+                            gate = self.verification_gate if self.verification_gate else self.presence_gate
+
+                            if gate:
+                                gated = gate.process(frame, human_result, timestamp_s=time.time())
+                                gated_state = gated.human_present
                         except Exception:
                             # On gating errors, fall back to raw detection
                             gated_state = human_result.human_present
                     
                     detection_count += 1
-
-                    # Vision verification (every 30 seconds)
-                    current_time = time.time()
-                    if (self.vision_verifier is not None and
-                        current_time - last_vision_verification >= vision_verification_interval):
-
-                        try:
-                            vision_result = self.vision_verifier.verify_human_presence(frame)
-
-                            if vision_result:
-                                # Compare with MediaPipe gated state
-                                mediapipe_state = gated_state
-                                vision_state = vision_result.human_detected
-
-                                # Track agreement/disagreement
-                                if mediapipe_state == vision_state:
-                                    vision_agree_count += 1
-                                    match_symbol = "✓"
-                                else:
-                                    vision_disagree_count += 1
-                                    match_symbol = "✗"
-
-                                # Structured logging for analysis
-                                total_checks = vision_agree_count + vision_disagree_count
-                                agreement_rate = (vision_agree_count / total_checks * 100) if total_checks > 0 else 0
-
-                                logger.warning(
-                                    f"[Vision Verification] "
-                                    f"MediaPipe: {'present' if mediapipe_state else 'absent'} | "
-                                    f"Vision: {'yes' if vision_state else 'no'} ({vision_result.confidence}) | "
-                                    f"Match: {match_symbol} | "
-                                    f"Agreement: {agreement_rate:.1f}% ({vision_agree_count}/{total_checks})"
-                                )
-
-                                last_vision_verification = current_time
-
-                        except Exception as e:
-                            logger.error(f"Vision verification error: {e}")
-                            last_vision_verification = current_time  # Still update to avoid spam
 
                     # Gesture detection with clean status tracking
                     gesture_status = "None"
@@ -435,14 +423,18 @@ class WebcamService:
                     last_presence_state = gated_state
 
                     # Print status update every 2 seconds (single updating line)
+                    current_time = time.time()
                     if current_time - last_status_print >= 2.0:
                         status = "👤 HUMAN" if gated_state else "❌ NO HUMAN"
                         # Clean gesture display with current status
                         gesture_display = f"{gesture_status} ({gesture_confidence:.2f})" if gesture_confidence > 0 else gesture_status
-                        # Add vision verification stats
-                        total_checks = vision_agree_count + vision_disagree_count
-                        vision_status = f"Vision: {vision_agree_count}/{total_checks}" if total_checks > 0 else "Vision: pending"
-                        print(f"\r{status} | Conf: {human_result.confidence:.2f} | Gesture: {gesture_display} | {vision_status} | Frames: {detection_count} | FPS: {fps_target}", end='', flush=True)
+                        # Add vision verification stats if enabled
+                        if self.verification_gate:
+                            stats = self.verification_gate.get_stats()
+                            vision_status = f"VisionGate: {stats['total_verifications']} checks, {stats['total_blocks']} blocks"
+                        else:
+                            vision_status = "VisionGate: disabled"
+                        print(f"\r{status} | Conf: {human_result.confidence:.2f} | Gesture: {gesture_display} | {vision_status} | Frames: {detection_count}", end='', flush=True)
                         last_status_print = current_time
                     
                     time.sleep(frame_time)
