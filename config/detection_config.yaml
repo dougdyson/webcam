@@ -1,6 +1,6 @@
 debounce_frames: 3
 enable_segmentation: false
-min_detection_confidence: 0.7
+min_detection_confidence: 0.5
 min_tracking_confidence: 0.5
 model_complexity: 1
 smoothing_window: 5
@@ -8,17 +8,17 @@ smoothing_window: 5
 # Presence gating configuration
 gating:
   enabled: true
-  phash_threshold_same: 10
-  ssim_threshold_same: 0.90
+  phash_threshold_same: 14
+  ssim_threshold_same: 0.94
   hysteresis:
-    enter_k: 8
+    enter_k: 4
     exit_l: 5
-  cooldown_ms: 3000
+  cooldown_ms: 1000
 
   # Vision-based verification (Option 3: State Transition Validation)
   vision_verification:
     enabled: true                      # Enable vision verification on state transitions
-    max_blocks_per_session: 10         # Max consecutive blocks before allowing (fail-safe)
+    max_blocks_per_session: 3          # Max consecutive blocks before allowing (fail-safe)
     recapture_on_block: true            # Recapture reference when blocking transition
     verify_enter_only: true             # Only verify enter transitions (not exit)
 
