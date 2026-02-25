@@ -119,7 +119,13 @@ class WebcamService:
             self.camera = CameraManager(camera_config)
             
             # Step 3: Initialize multimodal detector (quiet)
-            self.detector = create_detector('multimodal')
+            from src.detection.base import DetectorConfig
+            detector_config = DetectorConfig(
+                min_detection_confidence=float(detection_cfg.get('min_detection_confidence', 0.5)),
+                min_tracking_confidence=float(detection_cfg.get('min_tracking_confidence', 0.5)),
+                model_complexity=int(detection_cfg.get('model_complexity', 1)),
+            )
+            self.detector = create_detector('multimodal', config=detector_config)
             self.detector.initialize()
             
             # Step 4: Initialize gesture detector
