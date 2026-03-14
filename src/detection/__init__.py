@@ -10,6 +10,7 @@ from .result import DetectionResult, DetectionError
 from .base import HumanDetector, DetectorConfig, DetectorError as BaseDetectorError, DetectorFactory, create_detector
 from .mediapipe_detector import MediaPipeDetector
 from .multimodal_detector import MultiModalDetector
+from .neural_detector import NeuralDetector
 
 # Use the base DetectorError as the main one (more comprehensive)
 DetectorError = BaseDetectorError
@@ -21,6 +22,7 @@ DetectorFactory.register('multimodal', MultiModalDetector)
 # Alias for backwards compatibility and convenience
 DetectorFactory.register('pose', MediaPipeDetector)  # Single pose detection
 DetectorFactory.register('pose_face', MultiModalDetector)  # Combined detection
+DetectorFactory.register('neural', NeuralDetector)  # MobileNet-SSD primary detector
 
 __all__ = [
     'DetectionResult',
@@ -31,4 +33,5 @@ __all__ = [
     'create_detector',
     'MediaPipeDetector',
     'MultiModalDetector',
+    'NeuralDetector',
 ] 

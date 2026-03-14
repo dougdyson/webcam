@@ -161,42 +161,43 @@ class TestEnhancedServiceIntegration:
     def test_enhanced_service_component_integration(self, enhanced_service):
         """
         RED: Test enhanced service component integration (camera, detector, gesture).
-        
+
         All components should be properly integrated and working together.
         """
         with patch('webcam_service.CameraManager') as mock_camera_class:
             with patch('webcam_service.create_detector') as mock_detector_factory:
                 with patch('webcam_service.GestureDetector') as mock_gesture_class:
                     with patch('webcam_service.EnhancedFrameProcessor') as mock_processor_class:
-                        
-                        # Setup successful mocks
-                        mock_camera = Mock()
-                        mock_camera.is_initialized = True
-                        mock_camera_class.return_value = mock_camera
-                        
-                        mock_detector = Mock()
-                        mock_detector_factory.return_value = mock_detector
-                        
-                        mock_gesture = Mock()
-                        mock_gesture_class.return_value = mock_gesture
-                        
-                        mock_processor = Mock()
-                        mock_processor_class.return_value = mock_processor
-                        
-                        # Initialize service
-                        enhanced_service.initialize()
-                        
-                        # All components should be integrated
-                        assert enhanced_service.camera is mock_camera
-                        assert enhanced_service.detector is mock_detector
-                        assert enhanced_service.gesture_detector is mock_gesture
-                        # NOTE: frame_processor is currently disabled in the service
-                        # assert enhanced_service.frame_processor is mock_processor
-                        
-                        # Essential components are available
-                        assert hasattr(enhanced_service, 'http_service')
-                        assert hasattr(enhanced_service, 'sse_service')
-                        assert hasattr(enhanced_service, 'event_publisher')
+                        # Also patch NeuralDetector so neural init fails and falls back to create_detector
+                        with patch('src.detection.neural_detector.NeuralDetector.initialize', side_effect=Exception("no model")):
+                            # Setup successful mocks
+                            mock_camera = Mock()
+                            mock_camera.is_initialized = True
+                            mock_camera_class.return_value = mock_camera
+
+                            mock_detector = Mock()
+                            mock_detector_factory.return_value = mock_detector
+
+                            mock_gesture = Mock()
+                            mock_gesture_class.return_value = mock_gesture
+
+                            mock_processor = Mock()
+                            mock_processor_class.return_value = mock_processor
+
+                            # Initialize service — neural fails, falls back to multimodal via create_detector
+                            enhanced_service.initialize()
+
+                            # All components should be integrated
+                            assert enhanced_service.camera is mock_camera
+                            assert enhanced_service.detector is mock_detector
+                            assert enhanced_service.gesture_detector is mock_gesture
+                            # NOTE: frame_processor is currently disabled in the service
+                            # assert enhanced_service.frame_processor is mock_processor
+
+                            # Essential components are available
+                            assert hasattr(enhanced_service, 'http_service')
+                            assert hasattr(enhanced_service, 'sse_service')
+                            assert hasattr(enhanced_service, 'event_publisher')
     
     def test_enhanced_service_service_layer_startup(self, enhanced_service):
         """

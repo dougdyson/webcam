@@ -1,3 +1,5 @@
+detector: neural   # "neural" (MobileNet-SSD) or "multimodal" (MediaPipe pose+face)
+
 debounce_frames: 3
 enable_segmentation: false
 min_detection_confidence: 0.5

@@ -74,7 +74,8 @@ class WebcamService:
     def __init__(self):
         # Core components
         self.camera = None
-        self.detector = None
+        self.detector = None          # Primary detector (neural or multimodal)
+        self.pose_detector = None     # MediaPipe multimodal for pose landmarks (gestures)
         self.gesture_detector = None
         self.frame_processor = None
         self.latest_frame_processor = None  # NEW: Latest Frame Processor for migration
@@ -118,81 +119,54 @@ class WebcamService:
             camera_config = CameraConfig()
             self.camera = CameraManager(camera_config)
             
-            # Step 3: Initialize multimodal detector (quiet)
-            self.detector = create_detector('multimodal')
-            self.detector.initialize()
-            
+            # Step 3: Initialize primary detector
+            # Try neural (MobileNet-SSD) first, fall back to multimodal
+            detector_type = detection_cfg.get('detector', 'neural') if isinstance(detection_cfg, dict) else 'neural'
+
+            if detector_type == 'neural':
+                try:
+                    from src.detection.neural_detector import NeuralDetector
+                    neural_cfg = {}
+                    if isinstance(detection_cfg, dict):
+                        neural_cfg = detection_cfg.get('gating', {}).get('vision_verification', {}).get('neural', {})
+                    self.detector = NeuralDetector(
+                        prototxt_path=neural_cfg.get('prototxt_path', 'models/MobileNetSSD_deploy.prototxt'),
+                        caffemodel_path=neural_cfg.get('caffemodel_path', 'models/MobileNetSSD_deploy.caffemodel'),
+                        input_size=tuple(neural_cfg.get('input_size', [300, 300])),
+                    )
+                    self.detector.initialize()
+                    logger.info("✓ Primary detector: NeuralDetector (MobileNet-SSD)")
+                except Exception as e:
+                    logger.warning(f"⚠ NeuralDetector init failed ({e}), falling back to multimodal")
+                    self.detector = create_detector('multimodal')
+                    self.detector.initialize()
+                    logger.info("✓ Primary detector: MultiModalDetector (fallback)")
+            else:
+                self.detector = create_detector('multimodal')
+                self.detector.initialize()
+                logger.info("✓ Primary detector: MultiModalDetector")
+
+            # Step 3b: Keep multimodal detector for pose landmarks (gesture classification)
+            # Only create if primary is NOT multimodal (avoid duplicate)
+            if not isinstance(self.detector, type(create_detector('multimodal'))):
+                self.pose_detector = create_detector('multimodal')
+                self.pose_detector.initialize()
+                logger.info("✓ Pose detector: MultiModalDetector (for gesture landmarks)")
+            else:
+                self.pose_detector = self.detector  # Reuse if already multimodal
+
             # Step 4: Initialize gesture detector
             self.gesture_detector = GestureDetector()
             self.gesture_detector.initialize()
-            
-            # Step 4.5: Initialize Latest Frame Processor (NEW - Phase 2.2)
+
+            # Step 4.5: Initialize Latest Frame Processor (uses primary detector)
             self.latest_frame_processor = LatestFrameProcessor(
                 camera_manager=self.camera,
                 detector=self.detector
             )
-            
-            # Step 5: Vision verification backend selection
-            # Read verifier_backend from detection config
-            vision_cfg = {}
-            if isinstance(detection_cfg, dict):
-                vision_cfg = detection_cfg.get('gating', {}).get('vision_verification', {})
-            verifier_backend = vision_cfg.get('verifier_backend', 'neural')
 
-            neural_initialized = False
-            if verifier_backend == 'neural':
-                try:
-                    from src.detection.neural_presence_verifier import (
-                        NeuralPresenceVerifier,
-                        NeuralPresenceVerifierConfig,
-                    )
-                    neural_cfg_section = vision_cfg.get('neural', {})
-                    neural_config = NeuralPresenceVerifierConfig(
-                        prototxt_path=neural_cfg_section.get(
-                            'prototxt_path', 'models/MobileNetSSD_deploy.prototxt'),
-                        caffemodel_path=neural_cfg_section.get(
-                            'caffemodel_path', 'models/MobileNetSSD_deploy.caffemodel'),
-                        confidence_threshold=float(neural_cfg_section.get(
-                            'confidence_threshold', 0.5)),
-                        input_size=tuple(neural_cfg_section.get('input_size', [300, 300])),
-                        cache_ttl_seconds=30,
-                    )
-                    neural_verifier = NeuralPresenceVerifier(neural_config)
-                    neural_verifier.initialize()
-                    self.vision_verifier = neural_verifier
-                    neural_initialized = True
-                    logger.info("✓ Vision verification enabled with MobileNet-SSD (neural)")
-                except FileNotFoundError as e:
-                    logger.warning(f"⚠ Neural model not found ({e}), falling back to Ollama")
-                except Exception as e:
-                    logger.warning(f"⚠ Neural verifier init failed ({e}), falling back to Ollama")
-
-            # Ollama fallback (or explicit ollama backend)
-            if not neural_initialized:
-                try:
-                    self.ollama_config = self.config_manager.load_ollama_config()
-                    client_config = self.ollama_config.get('client', {})
-                    ollama_cfg = OllamaConfig(
-                        model=client_config.get('model', 'qwen3-vl:2b-instruct-q4_K_M'),
-                        base_url=client_config.get('base_url', 'http://localhost:11434'),
-                        timeout=client_config.get('timeout_seconds', 40.0),
-                        max_retries=client_config.get('max_retries', 2)
-                    )
-                    self.ollama_client = OllamaClient(ollama_cfg)
-                    self.vision_verifier = VisionPresenceVerifier(
-                        ollama_client=self.ollama_client,
-                        cache_ttl_seconds=30
-                    )
-                    if self.ollama_client.is_available():
-                        logger.info(f"✓ Vision verification enabled with {ollama_cfg.model} (ollama)")
-                    else:
-                        logger.warning("⚠ Ollama service not available - vision verification will fail")
-                except Exception as e:
-                    logger.warning(f"⚠ Failed to initialize vision verification: {e}")
-                    self.ollama_client = None
-                    self.vision_verifier = None
-
-            # DescriptionService remains disabled (we only need verification)
+            # Vision verification is no longer needed — neural IS the primary detector
+            self.vision_verifier = None
             self.description_service = None
             self.ollama_image_processor = None
             self._description_service_failed = False
@@ -262,35 +236,7 @@ class WebcamService:
                     max_refs=max_refs,
                 )
                 self.presence_gate = PresenceGate(self.reference_manager, pg_cfg)
-
-                # Vision verification gate (wraps PresenceGate)
-                vision_cfg = gating_cfg.get('vision_verification', {})
-                vision_enabled = bool(vision_cfg.get('enabled', False))
-
-                if vision_enabled and self.vision_verifier:
-                    from src.processing.vision_verification_gate import (
-                        VisionVerificationGate,
-                        VisionVerificationConfig
-                    )
-
-                    vv_config = VisionVerificationConfig(
-                        max_blocks_per_session=int(vision_cfg.get('max_blocks_per_session', 3)),
-                        recapture_on_block=bool(vision_cfg.get('recapture_on_block', True)),
-                        verify_enter_only=bool(vision_cfg.get('verify_enter_only', True))
-                    )
-
-                    self.verification_gate = VisionVerificationGate(
-                        presence_gate=self.presence_gate,
-                        vision_verifier=self.vision_verifier,
-                        config=vv_config
-                    )
-                    logger.info("✓ Vision verification gate enabled")
-                else:
-                    self.verification_gate = None
-                    if vision_enabled and not self.vision_verifier:
-                        logger.warning("⚠ Vision verification enabled but vision_verifier not available")
-            else:
-                self.verification_gate = None
+                logger.info("✓ Presence gate enabled (hysteresis + cooldown)")
 
         except Exception as e:
             logger.error(f"Failed to initialize enhanced service: {e}")
@@ -312,6 +258,9 @@ class WebcamService:
             # Cleanup existing components
             if self.gesture_detector and hasattr(self.gesture_detector, 'cleanup'):
                 self.gesture_detector.cleanup()
+            if hasattr(self, 'pose_detector') and self.pose_detector and self.pose_detector is not self.detector:
+                if hasattr(self.pose_detector, 'cleanup'):
+                    self.pose_detector.cleanup()
             if self.detector and hasattr(self.detector, 'cleanup'):
                 self.detector.cleanup()
             if self.camera and hasattr(self.camera, 'cleanup'):
@@ -322,9 +271,10 @@ class WebcamService:
             # Reset components to None
             self.camera = None
             self.detector = None
+            self.pose_detector = None
             self.gesture_detector = None
             self.frame_processor = None
-            self.latest_frame_processor = None  # NEW: Clean up Latest Frame Processor
+            self.latest_frame_processor = None
             self.http_service = None
             self.sse_service = None
             self.presence_sse_service = None
@@ -354,15 +304,12 @@ class WebcamService:
                     # Simple detection processing - Ollama disabled for gesture-only mode
                     human_result = self.latest_frame_processor.process_frame(frame)
 
-                    # Apply presence gating (with optional vision verification)
+                    # Apply presence gating (PresenceGate only — no VisionVerificationGate)
                     gated_state = human_result.human_present
                     if self._gating_enabled:
                         try:
-                            # Use verification gate if available, otherwise use presence gate
-                            gate = self.verification_gate if self.verification_gate else self.presence_gate
-
-                            if gate:
-                                gated = gate.process(frame, human_result, timestamp_s=time.time())
+                            if self.presence_gate:
+                                gated = self.presence_gate.process(frame, human_result, timestamp_s=time.time())
                                 gated_state = gated.human_present
                         except Exception:
                             # On gating errors, fall back to raw detection
@@ -376,9 +323,16 @@ class WebcamService:
                     
                     # Simple threshold check with shoulder validation
                     if gated_state and human_result.confidence > 0.6:
-                        # Direct gesture detection with pose landmarks for shoulder reference
+                        # Get pose landmarks for gesture classifier
+                        # If primary detector is neural, run pose_detector for landmarks
                         pose_landmarks = getattr(human_result, '_original_pose_landmarks', None)
-                        
+                        if pose_landmarks is None and self.pose_detector and self.pose_detector is not self.detector:
+                            try:
+                                pose_result = self.pose_detector.detect(frame)
+                                pose_landmarks = getattr(pose_result, '_original_pose_landmarks', None)
+                            except Exception:
+                                pose_landmarks = None
+
                         gesture_result = self.gesture_detector.detect_gestures(frame, pose_landmarks)
                         
                         if gesture_result and gesture_result.gesture_detected:
@@ -453,13 +407,9 @@ class WebcamService:
                         status = "👤 HUMAN" if gated_state else "❌ NO HUMAN"
                         # Clean gesture display with current status
                         gesture_display = f"{gesture_status} ({gesture_confidence:.2f})" if gesture_confidence > 0 else gesture_status
-                        # Add vision verification stats if enabled
-                        if self.verification_gate:
-                            stats = self.verification_gate.get_stats()
-                            vision_status = f"VisionGate: {stats['total_verifications']} checks, {stats['total_blocks']} blocks"
-                        else:
-                            vision_status = "VisionGate: disabled"
-                        print(f"\r{status} | Conf: {human_result.confidence:.2f} | Gesture: {gesture_display} | {vision_status} | Frames: {detection_count}", end='', flush=True)
+                        # Show detector type
+                        detector_name = type(self.detector).__name__
+                        print(f"\r{status} | Conf: {human_result.confidence:.2f} | Gesture: {gesture_display} | Detector: {detector_name} | Frames: {detection_count}", end='', flush=True)
                         last_status_print = current_time
                     
                     time.sleep(frame_time)
@@ -564,19 +514,22 @@ class WebcamService:
         # Cleanup existing components
         if self.gesture_detector:
             self.gesture_detector.cleanup()
+        if self.pose_detector and self.pose_detector is not self.detector:
+            self.pose_detector.cleanup()
         if self.detector:
             self.detector.cleanup()
         if self.camera:
             self.camera.cleanup()
-        
+
         # Set components to None
         self.description_service = None
         self.ollama_client = None
         self.ollama_image_processor = None
         self.gesture_detector = None
+        self.pose_detector = None
         self.detector = None
         self.camera = None
-        self.latest_frame_processor = None  # NEW: Clean up Latest Frame Processor
+        self.latest_frame_processor = None
         
         logger.info("✅ Enhanced service shutdown complete")
     
