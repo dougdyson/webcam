@@ -436,6 +436,65 @@ class TestVisionVerificationGatePassthrough:
         )
 
 
+class TestNeuralPresenceVerifierIntegration:
+    """
+    Integration tests for NeuralPresenceVerifier with real model files.
+
+    Skipped when model files are not downloaded.
+    """
+
+    @pytest.fixture
+    def neural_verifier(self):
+        """Create NeuralPresenceVerifier with real model files."""
+        from src.detection.neural_presence_verifier import (
+            NeuralPresenceVerifier,
+            NeuralPresenceVerifierConfig,
+        )
+        config = NeuralPresenceVerifierConfig()
+        verifier = NeuralPresenceVerifier(config)
+        try:
+            verifier.initialize()
+        except FileNotFoundError:
+            pytest.skip(
+                "MobileNet-SSD model not downloaded. "
+                "Run: python scripts/download_model.py"
+            )
+        yield verifier
+        verifier.cleanup()
+
+    @pytest.mark.integration
+    def test_neural_detects_human_in_real_frame(self, neural_verifier, human_frame):
+        result = neural_verifier.verify_human_presence(human_frame)
+        assert result is not None, "Neural verification should succeed"
+        assert result.human_detected is True, (
+            f"Neural verifier should detect human. Got: {result}"
+        )
+
+    @pytest.mark.integration
+    def test_neural_detects_empty_in_real_frame(self, neural_verifier, empty_frame):
+        result = neural_verifier.verify_human_presence(empty_frame)
+        assert result is not None, "Neural verification should succeed"
+        assert result.human_detected is False, (
+            f"Neural verifier should NOT detect human in empty frame. Got: {result}"
+        )
+
+    @pytest.mark.integration
+    def test_neural_inference_latency(self, neural_verifier, human_frame):
+        """Verify inference completes in <15ms (target)."""
+        import time
+        # Warm up
+        neural_verifier.verify_human_presence(human_frame)
+        neural_verifier.clear_cache()
+
+        start = time.perf_counter()
+        neural_verifier.verify_human_presence(human_frame)
+        elapsed_ms = (time.perf_counter() - start) * 1000
+
+        assert elapsed_ms < 50, (
+            f"Neural inference took {elapsed_ms:.1f}ms (target <15ms, hard limit 50ms)"
+        )
+
+
 class TestVisionVerificationGateMetrics:
     """
     Test that VisionVerificationGate tracks metrics correctly.

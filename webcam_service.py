@@ -132,45 +132,70 @@ class WebcamService:
                 detector=self.detector
             )
             
-            # Step 5: Ollama components - ENABLED for vision verification
-            try:
-                # Load Ollama config
-                self.ollama_config = self.config_manager.load_ollama_config()
+            # Step 5: Vision verification backend selection
+            # Read verifier_backend from detection config
+            vision_cfg = {}
+            if isinstance(detection_cfg, dict):
+                vision_cfg = detection_cfg.get('gating', {}).get('vision_verification', {})
+            verifier_backend = vision_cfg.get('verifier_backend', 'neural')
 
-                # Initialize OllamaClient for vision verification
-                client_config = self.ollama_config.get('client', {})
-                ollama_cfg = OllamaConfig(
-                    model=client_config.get('model', 'qwen3-vl:2b-instruct-q4_K_M'),
-                    base_url=client_config.get('base_url', 'http://localhost:11434'),
-                    timeout=client_config.get('timeout_seconds', 40.0),
-                    max_retries=client_config.get('max_retries', 2)
-                )
-                self.ollama_client = OllamaClient(ollama_cfg)
+            neural_initialized = False
+            if verifier_backend == 'neural':
+                try:
+                    from src.detection.neural_presence_verifier import (
+                        NeuralPresenceVerifier,
+                        NeuralPresenceVerifierConfig,
+                    )
+                    neural_cfg_section = vision_cfg.get('neural', {})
+                    neural_config = NeuralPresenceVerifierConfig(
+                        prototxt_path=neural_cfg_section.get(
+                            'prototxt_path', 'models/MobileNetSSD_deploy.prototxt'),
+                        caffemodel_path=neural_cfg_section.get(
+                            'caffemodel_path', 'models/MobileNetSSD_deploy.caffemodel'),
+                        confidence_threshold=float(neural_cfg_section.get(
+                            'confidence_threshold', 0.5)),
+                        input_size=tuple(neural_cfg_section.get('input_size', [300, 300])),
+                        cache_ttl_seconds=30,
+                    )
+                    neural_verifier = NeuralPresenceVerifier(neural_config)
+                    neural_verifier.initialize()
+                    self.vision_verifier = neural_verifier
+                    neural_initialized = True
+                    logger.info("✓ Vision verification enabled with MobileNet-SSD (neural)")
+                except FileNotFoundError as e:
+                    logger.warning(f"⚠ Neural model not found ({e}), falling back to Ollama")
+                except Exception as e:
+                    logger.warning(f"⚠ Neural verifier init failed ({e}), falling back to Ollama")
 
-                # Initialize VisionPresenceVerifier (lightweight, no DescriptionService)
-                self.vision_verifier = VisionPresenceVerifier(
-                    ollama_client=self.ollama_client,
-                    cache_ttl_seconds=30  # Match verification interval
-                )
+            # Ollama fallback (or explicit ollama backend)
+            if not neural_initialized:
+                try:
+                    self.ollama_config = self.config_manager.load_ollama_config()
+                    client_config = self.ollama_config.get('client', {})
+                    ollama_cfg = OllamaConfig(
+                        model=client_config.get('model', 'qwen3-vl:2b-instruct-q4_K_M'),
+                        base_url=client_config.get('base_url', 'http://localhost:11434'),
+                        timeout=client_config.get('timeout_seconds', 40.0),
+                        max_retries=client_config.get('max_retries', 2)
+                    )
+                    self.ollama_client = OllamaClient(ollama_cfg)
+                    self.vision_verifier = VisionPresenceVerifier(
+                        ollama_client=self.ollama_client,
+                        cache_ttl_seconds=30
+                    )
+                    if self.ollama_client.is_available():
+                        logger.info(f"✓ Vision verification enabled with {ollama_cfg.model} (ollama)")
+                    else:
+                        logger.warning("⚠ Ollama service not available - vision verification will fail")
+                except Exception as e:
+                    logger.warning(f"⚠ Failed to initialize vision verification: {e}")
+                    self.ollama_client = None
+                    self.vision_verifier = None
 
-                # Check if Ollama is available
-                if self.ollama_client.is_available():
-                    logger.info(f"✓ Vision verification enabled with {ollama_cfg.model}")
-                else:
-                    logger.warning("⚠ Ollama service not available - vision verification will fail")
-
-                # DescriptionService remains disabled (we only need verification)
-                self.description_service = None
-                self.ollama_image_processor = None
-                self._description_service_failed = False
-
-            except Exception as e:
-                logger.warning(f"⚠ Failed to initialize vision verification: {e}")
-                self.ollama_client = None
-                self.vision_verifier = None
-                self.description_service = None
-                self.ollama_image_processor = None
-                self._description_service_failed = False
+            # DescriptionService remains disabled (we only need verification)
+            self.description_service = None
+            self.ollama_image_processor = None
+            self._description_service_failed = False
             
             # DISABLED: Initialize enhanced frame processor with BALANCED SETTINGS (prevent false positives but still work)
             # processor_config = EnhancedProcessorConfig(

@@ -18,9 +18,15 @@ gating:
   # Vision-based verification (Option 3: State Transition Validation)
   vision_verification:
     enabled: true                      # Enable vision verification on state transitions
+    verifier_backend: neural            # "neural" (MobileNet-SSD) or "ollama"
     max_blocks_per_session: 3          # Max consecutive blocks before allowing (fail-safe)
     recapture_on_block: true            # Recapture reference when blocking transition
     verify_enter_only: true             # Only verify enter transitions (not exit)
+    neural:
+      prototxt_path: models/MobileNetSSD_deploy.prototxt
+      caffemodel_path: models/MobileNetSSD_deploy.caffemodel
+      confidence_threshold: 0.5
+      input_size: [300, 300]
 
 refs:
   capture_stable_seconds: 5

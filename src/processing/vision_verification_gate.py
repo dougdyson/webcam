@@ -19,7 +19,7 @@ import numpy as np
 
 from src.detection.result import DetectionResult
 from src.processing.presence_gate import PresenceGate, GatedResult
-from src.ollama.vision_verifier import VisionPresenceVerifier, VisionVerificationResult
+from src.ollama.vision_verifier import VisionVerificationResult
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ class VisionVerificationGate:
     def __init__(
         self,
         presence_gate: PresenceGate,
-        vision_verifier: VisionPresenceVerifier,
+        vision_verifier,
         config: Optional[VisionVerificationConfig] = None
     ):
         """

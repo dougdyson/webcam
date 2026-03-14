@@ -265,6 +265,7 @@ tests/temp/
 *.onnx
 *.tflite
 models/
+!models/MobileNetSSD_deploy.prototxt
 
 # Large dataset files
 *.tar.gz
