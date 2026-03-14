@@ -5,7 +5,7 @@ async_processor:
 client:
   base_url: http://localhost:11434
   max_retries: 2
-  model: qwen3-vl:2b-instruct-q4_K_M
+  model: gemma3:4b-it-q4_K_M
   timeout_seconds: 40.0
 description_service:
   cache_ttl_seconds: 300
