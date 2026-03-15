@@ -30,8 +30,10 @@ import threading
 import signal
 import sys
 import logging
+import os
 from typing import Optional
 from datetime import datetime
+
 
 # Core detection system
 from src.detection import create_detector
@@ -103,6 +105,7 @@ class WebcamService:
         self.reference_manager: Optional[ReferenceManager] = None
         self.presence_gate: Optional[PresenceGate] = None
         self._gating_enabled: bool = False
+
         
     def initialize(self):
         """Initialize all components with proper error handling."""
@@ -376,6 +379,22 @@ class WebcamService:
                     
                     # Publish PRESENCE_CHANGED event when presence changes
                     if last_presence_state is not None and last_presence_state != gated_state:
+                        # --- Diagnostic: log and snapshot on presence flip ---
+                        bbox = human_result.bounding_box
+                        ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        direction = "ENTER" if gated_state else "EXIT"
+                        bbox_desc = ""
+                        if bbox and frame is not None:
+                            h, w = frame.shape[:2]
+                            bx, by, bw, bh = bbox
+                            cx = bx + bw // 2
+                            horiz = "left" if cx < w // 3 else ("right" if cx > 2 * w // 3 else "center")
+                            vert = "top" if by < h // 3 else ("bottom" if by > 2 * h // 3 else "middle")
+                            bbox_desc = f" bbox=({bx},{by},{bw},{bh}) region={vert}-{horiz}"
+                        logger.warning(
+                            f"PRESENCE {direction} | conf={human_result.confidence:.3f}{bbox_desc} | {ts_str}"
+                        )
+
                         try:
                             presence_event = ServiceEvent(
                                 event_type=EventType.PRESENCE_CHANGED,
@@ -387,7 +406,7 @@ class WebcamService:
                                 timestamp=datetime.now()
                             )
                             self.event_publisher.publish(presence_event)
-                            
+
                             # Also publish async for SSE
                             import asyncio
                             try:

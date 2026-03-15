@@ -10,15 +10,19 @@ Shows live webcam feed with gesture detection overlays:
 - Gesture detection status
 """
 
+import argparse
 import cv2
 import numpy as np
 import sys
 import os
-# Add project root to Python path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root to Python path and set working directory
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _PROJECT_ROOT)
+os.chdir(_PROJECT_ROOT)
 
 from src.camera import CameraManager, CameraConfig
 from src.detection import create_detector
+from src.detection.neural_detector import NeuralDetector
 from src.detection.gesture_detector import GestureDetector
 import mediapipe as mp
 
@@ -130,21 +134,34 @@ def draw_shoulder_reference(image, pose_landmarks):
     
     return image
 
-def draw_gesture_status(image, gesture_result, human_result):
+def draw_gesture_status(image, gesture_result, human_result, neural_result=None):
     """Draw gesture detection status overlay with detailed debug info."""
     h, w = image.shape[:2]
-    
+
     # Background for text - make it bigger for more info
     overlay = image.copy()
-    cv2.rectangle(overlay, (10, 10), (500, 300), (0, 0, 0), -1)
+    cv2.rectangle(overlay, (10, 10), (500, 320), (0, 0, 0), -1)
     cv2.addWeighted(overlay, 0.7, image, 0.3, 0, image)
-    
+
     y_offset = 30
     line_height = 25
-    
-    # Human detection status
+
+    # Neural detector (MobileNet-SSD) status — this is what the service uses
+    if neural_result is not None:
+        n_color = (0, 255, 0) if neural_result.human_present else (0, 0, 255)
+        n_text = f"Neural (SSD): {'YES' if neural_result.human_present else 'NO'} ({neural_result.confidence:.2f})"
+        cv2.putText(image, n_text, (20, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, n_color, 2)
+        y_offset += line_height
+        # Draw neural bbox
+        if neural_result.bounding_box:
+            bx, by, bw, bh = neural_result.bounding_box
+            cv2.rectangle(image, (bx, by), (bx + bw, by + bh), (0, 165, 255), 2)
+            cv2.putText(image, f"SSD {neural_result.confidence:.2f}", (bx, by - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 165, 255), 2)
+
+    # MediaPipe (pose+face) status — skeletal confidence
     color = (0, 255, 0) if human_result.human_present else (0, 0, 255)
-    text = f"Human: {'YES' if human_result.human_present else 'NO'} ({human_result.confidence:.2f})"
+    text = f"MediaPipe: {'YES' if human_result.human_present else 'NO'} ({human_result.confidence:.2f})"
     cv2.putText(image, text, (20, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
     
     y_offset += line_height
@@ -288,6 +305,11 @@ def draw_gesture_status(image, gesture_result, human_result):
     return image
 
 def main():
+    parser = argparse.ArgumentParser(description="Visual Gesture Debug Tool")
+    parser.add_argument("--diag", action="store_true",
+                        help="Enable diagnostic logging: print neural state changes and save snapshots to /tmp/ziggy-webcam/diagnostics/")
+    args = parser.parse_args()
+
     print("🎥 Visual Gesture Debug Tool")
     print("=" * 40)
     print("Visual debugging with live video feed showing:")
@@ -297,6 +319,8 @@ def main():
     print("- Head/nose landmark (yellow dot)")
     print("- Head exclusion zone (yellow circle)")
     print("- Real-time confidence scores")
+    if args.diag:
+        print("- DIAGNOSTIC MODE: logging neural state changes + saving snapshots")
     print()
     print("Press 'q' to quit")
     print()
@@ -305,29 +329,69 @@ def main():
     camera = CameraManager(CameraConfig())
     human_detector = create_detector('multimodal')
     human_detector.initialize()
-    
+
+    # Neural detector (MobileNet-SSD) — same model the service uses
+    neural_detector = NeuralDetector()
+    neural_detector.initialize()
+    print("  Neural detector (MobileNet-SSD) initialized")
+
     gesture_detector = GestureDetector()
     gesture_detector.initialize()
-    
+
+    # Diagnostic snapshot directory (only when --diag)
+    diag_dir = "/tmp/ziggy-webcam/diagnostics"
+    if args.diag:
+        os.makedirs(diag_dir, exist_ok=True)
+        print(f"  Diagnostic snapshots → {diag_dir}")
+
     # MediaPipe drawing utilities
     mp_hands = mp.solutions.hands
     mp_drawing = mp.solutions.drawing_utils
     mp_pose = mp.solutions.pose
-    
+
     frame_count = 0
-    
+    last_neural_state = None
+
     try:
         while True:
             frame = camera.get_frame()
             if frame is not None:
                 frame_count += 1
-                
+
                 # Make a copy for drawing
                 debug_frame = frame.copy()
-                
-                # Run human detection
+
+                # Run both detectors
                 human_result = human_detector.detect(frame)
-                
+                neural_result = neural_detector.detect(frame)
+
+                # Log and snapshot on neural state change (--diag only)
+                if args.diag and last_neural_state is not None and neural_result.human_present != last_neural_state:
+                    from datetime import datetime
+                    ts_str = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                    direction = "ENTER" if neural_result.human_present else "EXIT"
+                    bbox = neural_result.bounding_box
+                    bbox_desc = ""
+                    if bbox:
+                        h, w = frame.shape[:2]
+                        bx, by, bw, bh = bbox
+                        cx = bx + bw // 2
+                        horiz = "left" if cx < w // 3 else ("right" if cx > 2 * w // 3 else "center")
+                        vert = "top" if by < h // 3 else ("bottom" if by > 2 * h // 3 else "middle")
+                        bbox_desc = f" bbox=({bx},{by},{bw},{bh}) region={vert}-{horiz}"
+                    print(f"\n⚡ NEURAL {direction} | conf={neural_result.confidence:.3f}{bbox_desc} | {ts_str}")
+                    if neural_result.human_present:
+                        snap = frame.copy()
+                        if bbox:
+                            bx, by, bw, bh = bbox
+                            cv2.rectangle(snap, (bx, by), (bx + bw, by + bh), (0, 0, 255), 2)
+                            cv2.putText(snap, f"SSD {neural_result.confidence:.2f}",
+                                        (bx, by - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                        snap_path = os.path.join(diag_dir, f"debug_fp_{ts_str}.jpg")
+                        cv2.imwrite(snap_path, snap)
+                        print(f"  Snapshot saved: {snap_path}")
+                last_neural_state = neural_result.human_present
+
                 # Run gesture detection if human present
                 gesture_result = None
                 if human_result.human_present:
@@ -361,8 +425,8 @@ def main():
                             palm_normal = gesture_detector._calculate_palm_normal(hand_landmarks, hand_label)
                             debug_frame = draw_palm_orientation(debug_frame, hand_landmarks, palm_normal, hand_label)
                 
-                # Draw status overlay
-                debug_frame = draw_gesture_status(debug_frame, gesture_result, human_result)
+                # Draw status overlay with both detector scores
+                debug_frame = draw_gesture_status(debug_frame, gesture_result, human_result, neural_result)
                 
                 # Show frame
                 cv2.imshow('Gesture Debug', debug_frame)
@@ -377,6 +441,7 @@ def main():
         print("🧹 Cleaning up...")
         cv2.destroyAllWindows()
         gesture_detector.cleanup()
+        neural_detector.cleanup()
         human_detector.cleanup()
         camera.cleanup()
         print("✅ Done!")
