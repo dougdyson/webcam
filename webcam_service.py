@@ -31,6 +31,7 @@ import signal
 import sys
 import logging
 import os
+import cv2
 from typing import Optional
 from datetime import datetime
 
@@ -298,7 +299,12 @@ class WebcamService:
 
         # Track presence for change detection
         last_presence_state = None
-        
+        # Exit debounce: require 3 consecutive non-detection frames before
+        # emitting a presence=False event. Prevents single-frame detector
+        # misses from flickering the mic off. Enter is instant (no debounce).
+        exit_miss_count = 0
+        EXIT_DEBOUNCE_FRAMES = 3
+
         while self.is_running and not self._shutdown_requested:
             try:
                 # Get frame from camera
@@ -317,6 +323,14 @@ class WebcamService:
                         except Exception:
                             # On gating errors, fall back to raw detection
                             gated_state = human_result.human_present
+
+                    # Exit debounce: suppress single-frame detector misses
+                    if gated_state:
+                        exit_miss_count = 0
+                    else:
+                        exit_miss_count += 1
+                        if exit_miss_count < EXIT_DEBOUNCE_FRAMES:
+                            gated_state = True  # hold presence until debounce met
                     
                     detection_count += 1
 
@@ -394,6 +408,7 @@ class WebcamService:
                         logger.warning(
                             f"PRESENCE {direction} | conf={human_result.confidence:.3f}{bbox_desc} | {ts_str}"
                         )
+
 
                         try:
                             presence_event = ServiceEvent(
