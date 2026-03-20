@@ -1,7 +1,7 @@
 """
-Unit tests for NeuralDetector (MobileNet-SSD primary presence detector).
+Unit tests for NeuralDetector (YOLOv8 primary presence detector).
 
-All tests use mocks for cv2.dnn so no model files are needed.
+All tests use mocks for ultralytics YOLO so no model files are needed.
 """
 from unittest.mock import patch, MagicMock
 
@@ -14,7 +14,7 @@ from src.detection.neural_detector import NeuralDetector, COCO_PERSON_CLASS_ID
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Fixtures & helpers
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
@@ -23,31 +23,34 @@ def dummy_frame():
     return np.zeros((480, 640, 3), dtype=np.uint8)
 
 
-def _make_detections(*entries):
-    """Build a (1,1,N,7) detection array from (class_id, confidence, x1, y1, x2, y2) tuples.
-
-    If only (class_id, confidence) is given, bbox defaults to (0.1, 0.1, 0.5, 0.5).
-    """
-    rows = []
-    for entry in entries:
-        if len(entry) == 2:
-            cls_id, conf = entry
-            rows.append([0, cls_id, conf, 0.1, 0.1, 0.5, 0.5])
-        else:
-            cls_id, conf, x1, y1, x2, y2 = entry
-            rows.append([0, cls_id, conf, x1, y1, x2, y2])
-    arr = np.array(rows, dtype=np.float32).reshape(1, 1, len(rows), 7)
-    return arr
+def _make_yolo_box(conf, x1, y1, x2, y2):
+    """Create a mock YOLO box object."""
+    box = MagicMock()
+    box.conf = float(conf)
+    xyxy_tensor = MagicMock()
+    xyxy_tensor.tolist.return_value = [x1, y1, x2, y2]
+    box.xyxy = [xyxy_tensor]
+    return box
 
 
-def _empty_detections():
-    return np.zeros((1, 1, 0, 7), dtype=np.float32)
+def _make_yolo_results(boxes):
+    """Build mock YOLO results list from a list of mock box objects."""
+    result = MagicMock()
+    result.boxes = boxes
+    return [result]
 
 
-def _make_detector_with_net(net_mock, config=None):
-    """Create a NeuralDetector that's 'initialized' with a mocked network."""
+def _empty_yolo_results():
+    """YOLO results with no detections."""
+    result = MagicMock()
+    result.boxes = []
+    return [result]
+
+
+def _make_detector_with_model(model_mock, config=None):
+    """Create a NeuralDetector that's 'initialized' with a mocked YOLO model."""
     d = NeuralDetector(config=config)
-    d._net = net_mock
+    d._model = model_mock
     d._initialized = True
     return d
 
@@ -83,7 +86,6 @@ class TestInterfaceCompliance:
 
 class TestFactoryRegistration:
     def test_create_via_factory(self):
-        # Re-register in case another test cleared the registry
         DetectorFactory.register('neural', NeuralDetector)
         detector = DetectorFactory.create('neural')
         assert isinstance(detector, NeuralDetector)
@@ -103,49 +105,40 @@ class TestInitialization:
         d = NeuralDetector()
         assert not d.is_initialized
 
-    def test_missing_prototxt_raises_detector_error(self):
-        d = NeuralDetector(prototxt_path="/nonexistent/deploy.prototxt")
-        with pytest.raises(DetectorError, match="Prototxt not found"):
-            d.initialize()
-
-    def test_missing_caffemodel_raises_detector_error(self, tmp_path):
-        proto = tmp_path / "deploy.prototxt"
-        proto.write_text("dummy")
-        d = NeuralDetector(
-            prototxt_path=str(proto),
-            caffemodel_path="/nonexistent/model.caffemodel",
-        )
-        with pytest.raises(DetectorError, match="Caffemodel not found"):
+    def test_missing_model_raises_detector_error(self):
+        d = NeuralDetector(model_path="/nonexistent/yolov8n.pt")
+        with pytest.raises(DetectorError, match="model not found"):
             d.initialize()
 
     def test_successful_init(self, tmp_path):
-        proto = tmp_path / "deploy.prototxt"
-        proto.write_text("dummy")
-        model = tmp_path / "model.caffemodel"
-        model.write_bytes(b"\x00" * 100)
+        model_file = tmp_path / "yolov8n.pt"
+        model_file.write_bytes(b"\x00" * 100)
 
-        with patch("cv2.dnn.readNetFromCaffe") as mock_read:
-            mock_read.return_value = MagicMock()
-            d = NeuralDetector(
-                prototxt_path=str(proto),
-                caffemodel_path=str(model),
-            )
-            d.initialize()
+        with patch("src.detection.neural_detector.YOLO", create=True) as mock_yolo_cls:
+            mock_yolo_cls.return_value = MagicMock()
+            # Patch the import inside initialize()
+            with patch.dict("sys.modules", {"ultralytics": MagicMock(YOLO=mock_yolo_cls)}):
+                d = NeuralDetector(model_path=str(model_file))
+                d.initialize()
 
-            assert d.is_initialized
-            mock_read.assert_called_once_with(str(proto), str(model))
+                assert d.is_initialized
 
-    def test_cv2_load_failure_raises_detector_error(self, tmp_path):
-        proto = tmp_path / "deploy.prototxt"
-        proto.write_text("dummy")
-        model = tmp_path / "model.caffemodel"
-        model.write_bytes(b"\x00" * 100)
+    def test_ultralytics_import_failure_raises_detector_error(self, tmp_path):
+        model_file = tmp_path / "yolov8n.pt"
+        model_file.write_bytes(b"\x00" * 100)
 
-        with patch("cv2.dnn.readNetFromCaffe", side_effect=RuntimeError("bad model")):
-            d = NeuralDetector(
-                prototxt_path=str(proto),
-                caffemodel_path=str(model),
-            )
+        d = NeuralDetector(model_path=str(model_file))
+        with patch("builtins.__import__", side_effect=ImportError("no ultralytics")):
+            with pytest.raises(DetectorError):
+                d.initialize()
+
+    def test_model_load_failure_raises_detector_error(self, tmp_path):
+        model_file = tmp_path / "yolov8n.pt"
+        model_file.write_bytes(b"\x00" * 100)
+
+        mock_yolo_cls = MagicMock(side_effect=RuntimeError("bad model"))
+        with patch.dict("sys.modules", {"ultralytics": MagicMock(YOLO=mock_yolo_cls)}):
+            d = NeuralDetector(model_path=str(model_file))
             with pytest.raises(DetectorError, match="Failed to load"):
                 d.initialize()
 
@@ -156,8 +149,8 @@ class TestInitialization:
 
 class TestCleanup:
     def test_cleanup_resets_state(self):
-        net = MagicMock()
-        d = _make_detector_with_net(net)
+        model = MagicMock()
+        d = _make_detector_with_model(model)
         assert d.is_initialized
 
         d.cleanup()
@@ -180,31 +173,32 @@ class TestDetection:
             d.detect(dummy_frame)
 
     def test_returns_detection_result(self, dummy_frame):
-        net = MagicMock()
-        net.forward.return_value = _make_detections((COCO_PERSON_CLASS_ID, 0.85))
+        model = MagicMock()
+        box = _make_yolo_box(0.85, 64, 96, 320, 384)
+        model.return_value = _make_yolo_results([box])
 
-        d = _make_detector_with_net(net)
+        d = _make_detector_with_model(model)
         result = d.detect(dummy_frame)
 
         assert isinstance(result, DetectionResult)
 
     def test_person_detected_above_threshold(self, dummy_frame):
-        net = MagicMock()
-        net.forward.return_value = _make_detections((COCO_PERSON_CLASS_ID, 0.85))
+        model = MagicMock()
+        box = _make_yolo_box(0.85, 64, 96, 320, 384)
+        model.return_value = _make_yolo_results([box])
 
-        d = _make_detector_with_net(net)
+        d = _make_detector_with_model(model)
         result = d.detect(dummy_frame)
 
         assert result.human_present is True
         assert result.confidence == pytest.approx(0.85, abs=0.01)
         assert result.bounding_box is not None
 
-    def test_no_person_detected(self, dummy_frame):
-        net = MagicMock()
-        # class 6 = bus, not person
-        net.forward.return_value = _make_detections((6, 0.95))
+    def test_no_detections(self, dummy_frame):
+        model = MagicMock()
+        model.return_value = _empty_yolo_results()
 
-        d = _make_detector_with_net(net)
+        d = _make_detector_with_model(model)
         result = d.detect(dummy_frame)
 
         assert result.human_present is False
@@ -212,45 +206,34 @@ class TestDetection:
         assert result.bounding_box is None
 
     def test_person_below_threshold_rejected(self, dummy_frame):
-        net = MagicMock()
-        net.forward.return_value = _make_detections((COCO_PERSON_CLASS_ID, 0.3))
+        model = MagicMock()
+        box = _make_yolo_box(0.3, 64, 96, 320, 384)
+        model.return_value = _make_yolo_results([box])
 
-        d = _make_detector_with_net(net)
+        d = _make_detector_with_model(model)
         result = d.detect(dummy_frame)
 
         assert result.human_present is False
         assert result.confidence == 0.0
 
     def test_person_at_threshold_accepted(self, dummy_frame):
-        net = MagicMock()
-        net.forward.return_value = _make_detections((COCO_PERSON_CLASS_ID, 0.5))
+        model = MagicMock()
+        box = _make_yolo_box(0.5, 64, 96, 320, 384)
+        model.return_value = _make_yolo_results([box])
 
-        d = _make_detector_with_net(net)
+        d = _make_detector_with_model(model)
         result = d.detect(dummy_frame)
 
         assert result.human_present is True
         assert result.confidence == pytest.approx(0.5, abs=0.01)
 
-    def test_empty_detections(self, dummy_frame):
-        net = MagicMock()
-        net.forward.return_value = _empty_detections()
-
-        d = _make_detector_with_net(net)
-        result = d.detect(dummy_frame)
-
-        assert result.human_present is False
-        assert result.confidence == 0.0
-        assert result.bounding_box is None
-
     def test_multiple_detections_uses_best(self, dummy_frame):
-        net = MagicMock()
-        net.forward.return_value = _make_detections(
-            (COCO_PERSON_CLASS_ID, 0.3),
-            (6, 0.99),  # bus — ignored
-            (COCO_PERSON_CLASS_ID, 0.75),
-        )
+        model = MagicMock()
+        box_low = _make_yolo_box(0.3, 10, 10, 100, 100)
+        box_high = _make_yolo_box(0.75, 64, 96, 320, 384)
+        model.return_value = _make_yolo_results([box_low, box_high])
 
-        d = _make_detector_with_net(net)
+        d = _make_detector_with_model(model)
         result = d.detect(dummy_frame)
 
         assert result.human_present is True
@@ -258,10 +241,11 @@ class TestDetection:
 
     def test_custom_confidence_threshold(self, dummy_frame):
         config = DetectorConfig(min_detection_confidence=0.8)
-        net = MagicMock()
-        net.forward.return_value = _make_detections((COCO_PERSON_CLASS_ID, 0.7))
+        model = MagicMock()
+        box = _make_yolo_box(0.7, 64, 96, 320, 384)
+        model.return_value = _make_yolo_results([box])
 
-        d = _make_detector_with_net(net, config=config)
+        d = _make_detector_with_model(model, config=config)
         result = d.detect(dummy_frame)
 
         # 0.7 < 0.8 threshold → not detected
@@ -274,19 +258,21 @@ class TestDetection:
 
 class TestPoseLandmarks:
     def test_original_pose_landmarks_always_none(self, dummy_frame):
-        net = MagicMock()
-        net.forward.return_value = _make_detections((COCO_PERSON_CLASS_ID, 0.9))
+        model = MagicMock()
+        box = _make_yolo_box(0.9, 64, 96, 320, 384)
+        model.return_value = _make_yolo_results([box])
 
-        d = _make_detector_with_net(net)
+        d = _make_detector_with_model(model)
         result = d.detect(dummy_frame)
 
         assert result._original_pose_landmarks is None
 
     def test_getattr_fallback_returns_none(self, dummy_frame):
-        net = MagicMock()
-        net.forward.return_value = _make_detections((COCO_PERSON_CLASS_ID, 0.9))
+        model = MagicMock()
+        box = _make_yolo_box(0.9, 64, 96, 320, 384)
+        model.return_value = _make_yolo_results([box])
 
-        d = _make_detector_with_net(net)
+        d = _make_detector_with_model(model)
         result = d.detect(dummy_frame)
 
         # This is the pattern used in webcam_service.py
@@ -299,28 +285,26 @@ class TestPoseLandmarks:
 
 class TestBoundingBox:
     def test_bounding_box_present_on_detection(self, dummy_frame):
-        net = MagicMock()
-        # Person at normalised coords (0.1, 0.2, 0.5, 0.8)
-        net.forward.return_value = _make_detections(
-            (COCO_PERSON_CLASS_ID, 0.9, 0.1, 0.2, 0.5, 0.8)
-        )
+        model = MagicMock()
+        # Person at pixel coords (64, 96) to (320, 384)
+        box = _make_yolo_box(0.9, 64, 96, 320, 384)
+        model.return_value = _make_yolo_results([box])
 
-        d = _make_detector_with_net(net)
+        d = _make_detector_with_model(model)
         result = d.detect(dummy_frame)
 
         assert result.bounding_box is not None
         x, y, w, h = result.bounding_box
-        # Frame is 640x480
-        assert x == int(0.1 * 640)   # 64
-        assert y == int(0.2 * 480)   # 96
-        assert w == int(0.5 * 640) - int(0.1 * 640)  # 256
-        assert h == int(0.8 * 480) - int(0.2 * 480)  # 288
+        assert x == 64
+        assert y == 96
+        assert w == 256   # 320 - 64
+        assert h == 288   # 384 - 96
 
-    def test_no_bounding_box_when_no_person(self, dummy_frame):
-        net = MagicMock()
-        net.forward.return_value = _make_detections((6, 0.95))
+    def test_no_bounding_box_when_no_detection(self, dummy_frame):
+        model = MagicMock()
+        model.return_value = _empty_yolo_results()
 
-        d = _make_detector_with_net(net)
+        d = _make_detector_with_model(model)
         result = d.detect(dummy_frame)
 
         assert result.bounding_box is None
@@ -332,15 +316,16 @@ class TestBoundingBox:
 
 class TestNoCaching:
     def test_each_detect_call_runs_inference(self, dummy_frame):
-        net = MagicMock()
-        net.forward.return_value = _make_detections((COCO_PERSON_CLASS_ID, 0.9))
+        model = MagicMock()
+        box = _make_yolo_box(0.9, 64, 96, 320, 384)
+        model.return_value = _make_yolo_results([box])
 
-        d = _make_detector_with_net(net)
+        d = _make_detector_with_model(model)
         d.detect(dummy_frame)
         d.detect(dummy_frame)
         d.detect(dummy_frame)
 
-        assert net.forward.call_count == 3
+        assert model.call_count == 3
 
 
 # ---------------------------------------------------------------------------
@@ -349,16 +334,12 @@ class TestNoCaching:
 
 class TestContextManager:
     def test_context_manager_init_and_cleanup(self, tmp_path):
-        proto = tmp_path / "deploy.prototxt"
-        proto.write_text("dummy")
-        model = tmp_path / "model.caffemodel"
-        model.write_bytes(b"\x00" * 100)
+        model_file = tmp_path / "yolov8n.pt"
+        model_file.write_bytes(b"\x00" * 100)
 
-        with patch("cv2.dnn.readNetFromCaffe", return_value=MagicMock()):
-            d = NeuralDetector(
-                prototxt_path=str(proto),
-                caffemodel_path=str(model),
-            )
+        mock_yolo_cls = MagicMock(return_value=MagicMock())
+        with patch.dict("sys.modules", {"ultralytics": MagicMock(YOLO=mock_yolo_cls)}):
+            d = NeuralDetector(model_path=str(model_file))
             with d:
                 assert d.is_initialized
 

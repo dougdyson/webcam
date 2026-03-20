@@ -49,36 +49,38 @@ class TestEnhancedServiceIntegration:
     def test_enhanced_service_initialization_with_correct_camera_api(self, enhanced_service):
         """
         RED: Test enhanced service initialization with correct CameraManager API.
-        
+
         This test should fail because the current service calls camera.initialize()
         but CameraManager auto-initializes in constructor.
         """
         with patch('webcam_service.CameraManager') as mock_camera_class:
             with patch('webcam_service.create_detector') as mock_detector_factory:
                 with patch('webcam_service.GestureDetector') as mock_gesture_class:
-                    
-                    # Setup mocks
-                    mock_camera = Mock()
-                    mock_camera.is_initialized = True
-                    mock_camera_class.return_value = mock_camera
-                    
-                    mock_detector = Mock()
-                    mock_detector_factory.return_value = mock_detector
-                    
-                    mock_gesture = Mock()
-                    mock_gesture_class.return_value = mock_gesture
-                    
-                    # This should NOT call initialize() methods
-                    enhanced_service.initialize()
-                    
-                    # Camera should be created but initialize() should NOT be called
-                    mock_camera_class.assert_called_once()
-                    assert not hasattr(mock_camera, 'initialize') or not mock_camera.initialize.called
-                    
-                    # Should not call initialize on components that auto-initialize
-                    assert enhanced_service.camera is not None
-                    assert enhanced_service.detector is not None
-                    assert enhanced_service.gesture_detector is not None
+                    with patch('src.detection.neural_detector.NeuralDetector') as mock_neural_class:
+
+                        # Setup mocks
+                        mock_camera = Mock()
+                        mock_camera.is_initialized = True
+                        mock_camera_class.return_value = mock_camera
+
+                        mock_detector = Mock()
+                        mock_detector_factory.return_value = mock_detector
+                        mock_neural_class.return_value = Mock()
+
+                        mock_gesture = Mock()
+                        mock_gesture_class.return_value = mock_gesture
+
+                        # This should NOT call initialize() methods
+                        enhanced_service.initialize()
+
+                        # Camera should be created but initialize() should NOT be called
+                        mock_camera_class.assert_called_once()
+                        assert not hasattr(mock_camera, 'initialize') or not mock_camera.initialize.called
+
+                        # Should not call initialize on components that auto-initialize
+                        assert enhanced_service.camera is not None
+                        assert enhanced_service.detector is not None
+                        assert enhanced_service.gesture_detector is not None
     
     def test_camera_manager_constructor_performs_initialization_automatically(self):
         """
@@ -106,7 +108,7 @@ class TestEnhancedServiceIntegration:
     def test_enhanced_service_startup_without_calling_nonexistent_initialize_method(self, enhanced_service):
         """
         RED: Test enhanced service startup without calling non-existent initialize() method.
-        
+
         This test should fail because current service tries to call initialize() on components.
         """
         with patch('webcam_service.CameraManager') as mock_camera_class:
@@ -115,30 +117,32 @@ class TestEnhancedServiceIntegration:
                     with patch('webcam_service.EnhancedFrameProcessor') as mock_processor_class:
                         with patch('webcam_service.HTTPDetectionService') as mock_http_class:
                             with patch('webcam_service.SSEDetectionService') as mock_sse_class:
-                                
-                                # Setup mocks - components should auto-initialize
-                                mock_camera = Mock()
-                                mock_camera.is_initialized = True
-                                mock_camera_class.return_value = mock_camera
-                                
-                                mock_detector = Mock()
-                                mock_detector_factory.return_value = mock_detector
-                                
-                                mock_gesture = Mock()
-                                mock_gesture_class.return_value = mock_gesture
-                                
-                                # Should initialize without calling initialize() methods
-                                try:
-                                    enhanced_service.initialize()
-                                    initialization_success = True
-                                except AttributeError as e:
-                                    if "initialize" in str(e):
-                                        initialization_success = False
-                                    else:
-                                        raise
-                                
-                                # This should pass once we fix the service
-                                assert initialization_success, "Service should initialize without calling initialize() methods"
+                                with patch('src.detection.neural_detector.NeuralDetector') as mock_neural_class:
+
+                                    # Setup mocks - components should auto-initialize
+                                    mock_camera = Mock()
+                                    mock_camera.is_initialized = True
+                                    mock_camera_class.return_value = mock_camera
+
+                                    mock_detector = Mock()
+                                    mock_detector_factory.return_value = mock_detector
+                                    mock_neural_class.return_value = Mock()
+
+                                    mock_gesture = Mock()
+                                    mock_gesture_class.return_value = mock_gesture
+
+                                    # Should initialize without calling initialize() methods
+                                    try:
+                                        enhanced_service.initialize()
+                                        initialization_success = True
+                                    except AttributeError as e:
+                                        if "initialize" in str(e):
+                                            initialization_success = False
+                                        else:
+                                            raise
+
+                                    # This should pass once we fix the service
+                                    assert initialization_success, "Service should initialize without calling initialize() methods"
     
     def test_enhanced_service_graceful_error_handling_during_startup(self, enhanced_service):
         """
@@ -160,49 +164,29 @@ class TestEnhancedServiceIntegration:
     
     def test_enhanced_service_component_integration(self, enhanced_service):
         """
-        RED: Test enhanced service component integration (camera, detector, gesture).
+        Test enhanced service component integration (camera, detector, gesture).
 
-        All components should be properly integrated and working together.
+        NeuralDetector is the sole presence detector. If it fails, initialization
+        must fail loudly — no silent fallback to MediaPipe.
         """
         with patch('webcam_service.CameraManager') as mock_camera_class:
             with patch('webcam_service.create_detector') as mock_detector_factory:
                 with patch('webcam_service.GestureDetector') as mock_gesture_class:
                     with patch('webcam_service.EnhancedFrameProcessor') as mock_processor_class:
-                        # Also patch NeuralDetector so neural init fails and falls back to create_detector
+                        # NeuralDetector failure must propagate — no MediaPipe fallback
                         with patch('src.detection.neural_detector.NeuralDetector.initialize', side_effect=Exception("no model")):
-                            # Setup successful mocks
                             mock_camera = Mock()
                             mock_camera.is_initialized = True
                             mock_camera_class.return_value = mock_camera
 
-                            mock_detector = Mock()
-                            mock_detector_factory.return_value = mock_detector
-
-                            mock_gesture = Mock()
-                            mock_gesture_class.return_value = mock_gesture
-
-                            mock_processor = Mock()
-                            mock_processor_class.return_value = mock_processor
-
-                            # Initialize service — neural fails, falls back to multimodal via create_detector
-                            enhanced_service.initialize()
-
-                            # All components should be integrated
-                            assert enhanced_service.camera is mock_camera
-                            assert enhanced_service.detector is mock_detector
-                            assert enhanced_service.gesture_detector is mock_gesture
-                            # NOTE: frame_processor is currently disabled in the service
-                            # assert enhanced_service.frame_processor is mock_processor
-
-                            # Essential components are available
-                            assert hasattr(enhanced_service, 'http_service')
-                            assert hasattr(enhanced_service, 'sse_service')
-                            assert hasattr(enhanced_service, 'event_publisher')
+                            # Service initialization must fail when NeuralDetector fails
+                            with pytest.raises(Exception, match="no model"):
+                                enhanced_service.initialize()
     
     def test_enhanced_service_service_layer_startup(self, enhanced_service):
         """
         RED: Test enhanced service service layer startup (HTTP + SSE).
-        
+
         Both HTTP and SSE services should start correctly.
         """
         with patch('webcam_service.CameraManager'):
@@ -211,28 +195,30 @@ class TestEnhancedServiceIntegration:
                     with patch('webcam_service.EnhancedFrameProcessor'):
                         with patch('webcam_service.HTTPDetectionService') as mock_http_class:
                             with patch('webcam_service.SSEDetectionService') as mock_sse_class:
-                                
-                                mock_http = Mock()
-                                mock_http_class.return_value = mock_http
-                                
-                                mock_sse = Mock()
-                                mock_sse_class.return_value = mock_sse
-                                
-                                # Initialize service
-                                enhanced_service.initialize()
-                                
-                                # Both services should be created
-                                assert enhanced_service.http_service is mock_http
-                                assert enhanced_service.sse_service is mock_sse
-                                
-                                # Services should be configured for integration
-                                mock_http.setup_event_integration.assert_called_once()
-                                mock_sse.setup_gesture_integration.assert_called_once()
+                                with patch('src.detection.neural_detector.NeuralDetector') as mock_neural_class:
+                                    mock_neural_class.return_value = Mock()
+
+                                    mock_http = Mock()
+                                    mock_http_class.return_value = mock_http
+
+                                    mock_sse = Mock()
+                                    mock_sse_class.return_value = mock_sse
+
+                                    # Initialize service
+                                    enhanced_service.initialize()
+
+                                    # Both services should be created
+                                    assert enhanced_service.http_service is mock_http
+                                    assert enhanced_service.sse_service is mock_sse
+
+                                    # Services should be configured for integration
+                                    mock_http.setup_event_integration.assert_called_once()
+                                    mock_sse.setup_gesture_integration.assert_called_once()
     
     def test_enhanced_service_detection_loop_functionality(self, enhanced_service):
         """
         RED: Test enhanced service detection loop functionality.
-        
+
         Detection loop should process frames and update services.
         """
         with patch('webcam_service.CameraManager') as mock_camera_class:
@@ -241,46 +227,48 @@ class TestEnhancedServiceIntegration:
                     with patch('webcam_service.EnhancedFrameProcessor') as mock_processor_class:
                         with patch('webcam_service.HTTPDetectionService') as mock_http_class:
                             with patch('webcam_service.SSEDetectionService'):
-                                
-                                # Setup mocks
-                                mock_camera = Mock()
-                                mock_camera.is_initialized = True
-                                mock_camera.get_frame.return_value = Mock()  # Mock frame
-                                mock_camera_class.return_value = mock_camera
-                                
-                                mock_processor = Mock()
-                                mock_detection_result = Mock()
-                                mock_detection_result.human_present = True
-                                mock_detection_result.confidence = 0.8
-                                mock_processor.process_frame.return_value = mock_detection_result
-                                mock_processor_class.return_value = mock_processor
-                                
-                                mock_http = Mock()
-                                mock_http.current_status = Mock()
-                                mock_http_class.return_value = mock_http
-                                
-                                # Initialize service
-                                enhanced_service.initialize()
-                                enhanced_service.is_running = False  # Prevent infinite loop
-                                enhanced_service._shutdown_requested = True  # Force loop exit
-                                
-                                # Test detection loop setup (don't run the infinite loop)
-                                # Instead, test that components are properly configured
-                                assert enhanced_service.camera is mock_camera
-                                # NOTE: frame_processor is currently disabled in the service 
-                                # assert enhanced_service.frame_processor is mock_processor
-                                assert enhanced_service.http_service is mock_http
-                                
-                                # Test core components are available for detection
-                                assert hasattr(enhanced_service, 'detector')
-                                assert hasattr(enhanced_service, 'gesture_detector')
-                                assert hasattr(enhanced_service, 'sse_service')
+                                with patch('src.detection.neural_detector.NeuralDetector') as mock_neural_class:
+                                    mock_neural_class.return_value = Mock()
 
-                                # Service should have detection loop capability
-                                # NOTE: is_running is only True when service is actually running (via run() method)
-                                assert callable(enhanced_service.detection_loop)
-                                assert hasattr(enhanced_service, 'is_running')  # Should have the attribute
-                                assert enhanced_service.is_running is False    # Should be False until run() is called
+                                    # Setup mocks
+                                    mock_camera = Mock()
+                                    mock_camera.is_initialized = True
+                                    mock_camera.get_frame.return_value = Mock()  # Mock frame
+                                    mock_camera_class.return_value = mock_camera
+
+                                    mock_processor = Mock()
+                                    mock_detection_result = Mock()
+                                    mock_detection_result.human_present = True
+                                    mock_detection_result.confidence = 0.8
+                                    mock_processor.process_frame.return_value = mock_detection_result
+                                    mock_processor_class.return_value = mock_processor
+
+                                    mock_http = Mock()
+                                    mock_http.current_status = Mock()
+                                    mock_http_class.return_value = mock_http
+
+                                    # Initialize service
+                                    enhanced_service.initialize()
+                                    enhanced_service.is_running = False  # Prevent infinite loop
+                                    enhanced_service._shutdown_requested = True  # Force loop exit
+
+                                    # Test detection loop setup (don't run the infinite loop)
+                                    # Instead, test that components are properly configured
+                                    assert enhanced_service.camera is mock_camera
+                                    # NOTE: frame_processor is currently disabled in the service
+                                    # assert enhanced_service.frame_processor is mock_processor
+                                    assert enhanced_service.http_service is mock_http
+
+                                    # Test core components are available for detection
+                                    assert hasattr(enhanced_service, 'detector')
+                                    assert hasattr(enhanced_service, 'gesture_detector')
+                                    assert hasattr(enhanced_service, 'sse_service')
+
+                                    # Service should have detection loop capability
+                                    # NOTE: is_running is only True when service is actually running (via run() method)
+                                    assert callable(enhanced_service.detection_loop)
+                                    assert hasattr(enhanced_service, 'is_running')  # Should have the attribute
+                                    assert enhanced_service.is_running is False    # Should be False until run() is called
 
 # ============================================================================
 # Phase 6.2: Service Integration Tests (RED PHASE)
@@ -473,23 +461,23 @@ class TestEnhancedServiceStartupShutdownOrder:
                             with patch('webcam_service.DescriptionService', side_effect=track_description_init):
                                 with patch('webcam_service.HTTPDetectionService'):
                                     with patch('webcam_service.SSEDetectionService'):
-                                        
-                                        # Initialize service
-                                        enhanced_service.initialize()
-                                        
-                                        # Should initialize in the correct order
-                                        expected_order = ['config', 'camera', 'detector', 'gesture', 'ollama', 'description']
-                                        
-                                        # Check that essential components are initialized in order
-                                        assert 'config' in initialization_order, "ConfigManager should be initialized"
-                                        assert 'camera' in initialization_order, "Camera should be initialized"
-                                        assert 'detector' in initialization_order, "Detector should be initialized"
-                                        
-                                        # Configuration should come first
-                                        config_index = initialization_order.index('config')
-                                        if 'ollama' in initialization_order:
-                                            ollama_index = initialization_order.index('ollama')
-                                            assert config_index < ollama_index, "Config should be loaded before Ollama components"
+                                        with patch('src.detection.neural_detector.NeuralDetector', return_value=Mock()):
+
+                                            # Initialize service
+                                            enhanced_service.initialize()
+
+                                            # Should initialize in the correct order
+                                            expected_order = ['config', 'camera', 'detector', 'gesture', 'ollama', 'description']
+
+                                            # Check that essential components are initialized in order
+                                            assert 'config' in initialization_order, "ConfigManager should be initialized"
+                                            assert 'camera' in initialization_order, "Camera should be initialized"
+
+                                            # Configuration should come first
+                                            config_index = initialization_order.index('config')
+                                            if 'ollama' in initialization_order:
+                                                ollama_index = initialization_order.index('ollama')
+                                                assert config_index < ollama_index, "Config should be loaded before Ollama components"
     
     def test_enhanced_service_properly_shuts_down_description_components(self, enhanced_service):
         """
@@ -527,7 +515,7 @@ class TestEnhancedServiceStartupShutdownOrder:
     def test_enhanced_service_handles_description_service_initialization_failure(self, enhanced_service):
         """
         RED: Test that EnhancedWebcamService handles DescriptionService initialization failure gracefully.
-        
+
         This test should fail because error handling for description service is not implemented.
         """
         with patch('webcam_service.CameraManager'):
@@ -538,28 +526,29 @@ class TestEnhancedServiceStartupShutdownOrder:
                             with patch('webcam_service.DescriptionService', side_effect=Exception("Ollama not available")):
                                 with patch('webcam_service.HTTPDetectionService'):
                                     with patch('webcam_service.SSEDetectionService'):
-                                        
-                                        # Should handle description service failure gracefully
-                                        try:
-                                            enhanced_service.initialize()
-                                            # Should continue working without description service
-                                            assert enhanced_service.camera is not None, "Camera should still work"
-                                            assert enhanced_service.detector is not None, "Detector should still work"
-                                            
-                                            # Description service should be None or disabled
-                                            description_available = (
-                                                hasattr(enhanced_service, 'description_service') and 
-                                                enhanced_service.description_service is not None
-                                            )
-                                            # Either no description service, or it's explicitly disabled
-                                            assert not description_available or \
-                                                   hasattr(enhanced_service, '_description_service_failed'), \
-                                                   "Should handle description service failure gracefully"
-                                        
-                                        except Exception as e:
-                                            # If initialization fails, it should be handled gracefully
-                                            assert "graceful" in str(e).lower() or "fallback" in str(e).lower(), \
-                                                f"Should handle description service failure gracefully, got: {e}"
+                                        with patch('src.detection.neural_detector.NeuralDetector', return_value=Mock()):
+
+                                            # Should handle description service failure gracefully
+                                            try:
+                                                enhanced_service.initialize()
+                                                # Should continue working without description service
+                                                assert enhanced_service.camera is not None, "Camera should still work"
+                                                assert enhanced_service.detector is not None, "Detector should still work"
+
+                                                # Description service should be None or disabled
+                                                description_available = (
+                                                    hasattr(enhanced_service, 'description_service') and
+                                                    enhanced_service.description_service is not None
+                                                )
+                                                # Either no description service, or it's explicitly disabled
+                                                assert not description_available or \
+                                                       hasattr(enhanced_service, '_description_service_failed'), \
+                                                       "Should handle description service failure gracefully"
+
+                                            except Exception as e:
+                                                # If initialization fails, it should be handled gracefully
+                                                assert "graceful" in str(e).lower() or "fallback" in str(e).lower(), \
+                                                    f"Should handle description service failure gracefully, got: {e}"
 
 @pytest.mark.skip(reason="Enhanced service component communication features may be disabled")
 class TestEnhancedServiceComponentCommunication:

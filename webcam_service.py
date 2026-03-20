@@ -123,41 +123,21 @@ class WebcamService:
             camera_config = CameraConfig()
             self.camera = CameraManager(camera_config)
             
-            # Step 3: Initialize primary detector
-            # Try neural (MobileNet-SSD) first, fall back to multimodal
-            detector_type = detection_cfg.get('detector', 'neural') if isinstance(detection_cfg, dict) else 'neural'
+            # Step 3: Initialize NeuralDetector (YOLOv8) — sole presence detector.
+            # MediaPipe is NOT used for presence. If NeuralDetector fails, the service
+            # must fail loudly rather than silently falling back to MediaPipe.
+            from src.detection.neural_detector import NeuralDetector
+            self.detector = NeuralDetector(
+                model_path='models/yolov8n.pt',
+            )
+            self.detector.initialize()
+            logger.info("✓ Primary detector: NeuralDetector (YOLOv8)")
 
-            if detector_type == 'neural':
-                try:
-                    from src.detection.neural_detector import NeuralDetector
-                    neural_cfg = {}
-                    if isinstance(detection_cfg, dict):
-                        neural_cfg = detection_cfg.get('gating', {}).get('vision_verification', {}).get('neural', {})
-                    self.detector = NeuralDetector(
-                        prototxt_path=neural_cfg.get('prototxt_path', 'models/MobileNetSSD_deploy.prototxt'),
-                        caffemodel_path=neural_cfg.get('caffemodel_path', 'models/MobileNetSSD_deploy.caffemodel'),
-                        input_size=tuple(neural_cfg.get('input_size', [300, 300])),
-                    )
-                    self.detector.initialize()
-                    logger.info("✓ Primary detector: NeuralDetector (MobileNet-SSD)")
-                except Exception as e:
-                    logger.warning(f"⚠ NeuralDetector init failed ({e}), falling back to multimodal")
-                    self.detector = create_detector('multimodal')
-                    self.detector.initialize()
-                    logger.info("✓ Primary detector: MultiModalDetector (fallback)")
-            else:
-                self.detector = create_detector('multimodal')
-                self.detector.initialize()
-                logger.info("✓ Primary detector: MultiModalDetector")
-
-            # Step 3b: Keep multimodal detector for pose landmarks (gesture classification)
-            # Only create if primary is NOT multimodal (avoid duplicate)
-            if not isinstance(self.detector, type(create_detector('multimodal'))):
-                self.pose_detector = create_detector('multimodal')
-                self.pose_detector.initialize()
-                logger.info("✓ Pose detector: MultiModalDetector (for gesture landmarks)")
-            else:
-                self.pose_detector = self.detector  # Reuse if already multimodal
+            # Step 3b: MediaPipe multimodal detector for gesture landmarks ONLY.
+            # This is NOT used for presence detection.
+            self.pose_detector = create_detector('multimodal')
+            self.pose_detector.initialize()
+            logger.info("✓ Pose detector: MultiModalDetector (gesture landmarks only)")
 
             # Step 4: Initialize gesture detector
             self.gesture_detector = GestureDetector()
@@ -303,7 +283,12 @@ class WebcamService:
         # emitting a presence=False event. Prevents single-frame detector
         # misses from flickering the mic off. Enter is instant (no debounce).
         exit_miss_count = 0
-        EXIT_DEBOUNCE_FRAMES = 3
+        EXIT_DEBOUNCE_FRAMES = 10  # ~0.7s at 15 FPS — ride through momentary dropouts
+        # Confidence gate: YOLOv8 already filters at conf=0.25 internally.
+        # A YOLO detection at 0.40+ is a reliable person. The old 0.80 gate
+        # was rejecting valid head-down / tilted / close-up detections that
+        # scored 0.5-0.79 and causing oscillation.
+        PRESENCE_CONFIDENCE_THRESHOLD = 0.40
 
         while self.is_running and not self._shutdown_requested:
             try:
@@ -323,6 +308,10 @@ class WebcamService:
                         except Exception:
                             # On gating errors, fall back to raw detection
                             gated_state = human_result.human_present
+
+                    # Confidence gate: require sufficient confidence for enter
+                    if gated_state and human_result.confidence < PRESENCE_CONFIDENCE_THRESHOLD:
+                        gated_state = False
 
                     # Exit debounce: suppress single-frame detector misses
                     if gated_state:
@@ -390,6 +379,14 @@ class WebcamService:
                         self.http_service.current_status.confidence = human_result.confidence
                         self.http_service.current_status.last_detection = datetime.now()
                         self.http_service.current_status.detection_count += 1
+                        # Log when setting human_present=True (hunting false positives)
+                        if gated_state:
+                            try:
+                                ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                                with open("/tmp/ziggy-webcam/outbound.log", "a") as f:
+                                    f.write(f"{ts} [DetectionLoop HTTP_STATUS_UPDATE] human_present=True confidence={human_result.confidence:.3f} detector={type(self.detector).__name__}\n")
+                            except Exception:
+                                pass
                     
                     # Publish PRESENCE_CHANGED event when presence changes
                     if last_presence_state is not None and last_presence_state != gated_state:
@@ -409,15 +406,43 @@ class WebcamService:
                             f"PRESENCE {direction} | conf={human_result.confidence:.3f}{bbox_desc} | {ts_str}"
                         )
 
+                        # Save diagnostic screenshot on presence state change
+                        if frame is not None:
+                            diag_dir = "/tmp/ziggy-webcam/diagnostics"
+                            os.makedirs(diag_dir, exist_ok=True)
+                            snap = frame.copy()
+                            if bbox:
+                                bx, by, bw, bh = bbox
+                                cv2.rectangle(snap, (bx, by), (bx + bw, by + bh), (0, 0, 255), 2)
+                                cv2.putText(snap, f"conf={human_result.confidence:.2f}",
+                                            (bx, by - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                            cv2.putText(snap, f"{direction} conf={human_result.confidence:.3f}",
+                                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+                            snap_path = os.path.join(diag_dir, f"presence_{direction}_{ts_str}_conf{human_result.confidence:.2f}.jpg")
+                            cv2.imwrite(snap_path, snap)
+                            logger.info(f"Diagnostic snapshot saved: {snap_path}")
 
                         try:
+                            event_data = {
+                                "human_present": gated_state,
+                                "confidence": human_result.confidence,
+                                "timestamp": datetime.now().isoformat()
+                            }
+                            pub_log_line = (
+                                f"{event_data['timestamp']} PUBLISHING PRESENCE_CHANGED → "
+                                f"human_present={event_data['human_present']} "
+                                f"confidence={event_data['confidence']:.3f} "
+                                f"detector={type(self.detector).__name__}"
+                            )
+                            logger.warning(pub_log_line)
+                            try:
+                                with open("/tmp/ziggy-webcam/presence_publish.log", "a") as pf:
+                                    pf.write(pub_log_line + "\n")
+                            except Exception:
+                                pass
                             presence_event = ServiceEvent(
                                 event_type=EventType.PRESENCE_CHANGED,
-                                data={
-                                    "human_present": gated_state,
-                                    "confidence": human_result.confidence,
-                                    "timestamp": datetime.now().isoformat()
-                                },
+                                data=event_data,
                                 timestamp=datetime.now()
                             )
                             self.event_publisher.publish(presence_event)
@@ -608,7 +633,7 @@ class WebcamService:
                             timestamp=datetime.now(),
                             confidence=detection_result.confidence,
                             human_present=detection_result.human_present,
-                            detection_source="multimodal"
+                            detection_source="neural"
                         )
                         snapshot = Snapshot(frame=frame, metadata=snapshot_metadata)
                         

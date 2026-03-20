@@ -4,6 +4,7 @@ mediapipe==0.10.21
 numpy==1.26.4
 pyyaml==6.0.2
 python-dotenv==1.1.0
+ultralytics>=8.4.0
 
 # Testing dependencies
 pytest==8.3.5

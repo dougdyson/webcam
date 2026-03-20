@@ -1,4 +1,4 @@
-detector: neural   # "neural" (MobileNet-SSD) or "multimodal" (MediaPipe pose+face)
+detector: neural   # NeuralDetector (MobileNet-SSD) is the sole presence detector. MediaPipe is gestures only.
 
 debounce_frames: 3
 enable_segmentation: false
