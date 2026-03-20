@@ -379,14 +379,6 @@ class WebcamService:
                         self.http_service.current_status.confidence = human_result.confidence
                         self.http_service.current_status.last_detection = datetime.now()
                         self.http_service.current_status.detection_count += 1
-                        # Log when setting human_present=True (hunting false positives)
-                        if gated_state:
-                            try:
-                                ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                                with open("/tmp/ziggy-webcam/outbound.log", "a") as f:
-                                    f.write(f"{ts} [DetectionLoop HTTP_STATUS_UPDATE] human_present=True confidence={human_result.confidence:.3f} detector={type(self.detector).__name__}\n")
-                            except Exception:
-                                pass
                     
                     # Publish PRESENCE_CHANGED event when presence changes
                     if last_presence_state is not None and last_presence_state != gated_state:

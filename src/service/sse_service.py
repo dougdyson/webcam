@@ -21,7 +21,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from src.service.events import EventPublisher, ServiceEvent, EventType
-from src.service.outbound_log import log_outbound
 
 
 @dataclass
@@ -822,7 +821,6 @@ class SSEDetectionService:
 
         # Convert event to SSE format
         sse_message = self._convert_event_to_sse_format(event)
-        log_outbound(f"SSE:8766 gesture_event {event.event_type.value}", event.data)
 
         # Stream to all active clients
         disconnected_clients = []
@@ -830,7 +828,6 @@ class SSEDetectionService:
         for client_id, client_queue in self.active_connections.items():
             try:
                 client_queue.put_nowait(sse_message)
-                log_outbound(f"SSE:8766 QUEUED→{client_id}", event.data)
             except asyncio.QueueFull:
                 logging.warning(f"Queue full for client {client_id}, dropping event")
             except Exception as e:

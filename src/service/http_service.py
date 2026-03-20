@@ -12,7 +12,6 @@ from typing import Dict, List, Any, Optional
 from collections import deque
 
 from .events import ServiceEvent, EventType, EventPublisher
-from .outbound_log import log_outbound
 
 # FastAPI imports with graceful fallback
 try:
@@ -163,14 +162,12 @@ class HTTPDetectionService:
         async def get_presence():
             """Get full presence status with all details."""
             response = self.current_status.to_dict()
-            log_outbound("HTTP GET /presence", response)
             return JSONResponse(content=response)
 
         @self.app.get("/presence/simple")
         async def get_simple_presence():
             """Get simple boolean presence status (optimized for guard clauses)."""
             response = {"human_present": self.current_status.human_present}
-            log_outbound("HTTP GET /presence/simple", response)
             return JSONResponse(content=response)
         
         @self.app.get("/health")
@@ -213,7 +210,6 @@ class HTTPDetectionService:
                         "processing_errors": self._description_stats.get('failed_descriptions', 0)
                     }
             
-            log_outbound("HTTP GET /health", health_data)
             return JSONResponse(content=health_data)
 
         @self.app.get("/statistics")
@@ -245,7 +241,6 @@ class HTTPDetectionService:
                     "average_processing_time_ms": round(self._description_stats['average_processing_time_ms'], 1)
                 }
             
-            log_outbound("HTTP GET /statistics", stats)
             return JSONResponse(content=stats)
 
         @self.app.get("/description/latest")
@@ -271,7 +266,6 @@ class HTTPDetectionService:
                 response_data = latest_description.to_dict()
                 response_data["status"] = "available"
 
-                log_outbound("HTTP GET /description/latest", response_data)
                 return JSONResponse(content=response_data)
                 
             except Exception as e:
@@ -293,14 +287,12 @@ class HTTPDetectionService:
         async def get_latest_gesture():
             """Get latest gesture status."""
             response = self.current_gesture_status.copy()
-            log_outbound("HTTP GET /gesture/latest", response)
             return JSONResponse(content=response)
 
         @self.app.get("/gesture/status")
         async def get_gesture_status():
             """Get current gesture status (alias for /gesture/latest)."""
             response = self.current_gesture_status.copy()
-            log_outbound("HTTP GET /gesture/status", response)
             return JSONResponse(content=response)
         
         if self.config.enable_history:
@@ -308,7 +300,6 @@ class HTTPDetectionService:
             async def get_detection_history():
                 """Get detection history."""
                 response = {"history": list(self.detection_history)}
-                log_outbound("HTTP GET /history", {"count": len(response["history"])})
                 return JSONResponse(content=response)
         else:
             @self.app.get("/history")
@@ -358,11 +349,6 @@ class HTTPDetectionService:
                         "event_type": event.event_type.value
                     })
                 
-                log_outbound("HTTP _handle_detection_event", {
-                    "human_present": self.current_status.human_present,
-                    "confidence": self.current_status.confidence,
-                    "event_type": event.event_type.value
-                })
                 self.logger.debug(f"Updated presence status: {self.current_status.human_present}")
             
             # NEW: Handle gesture events for MediaPipe integration

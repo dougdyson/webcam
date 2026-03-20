@@ -11,7 +11,6 @@ from datetime import datetime
 from typing import Dict, Set
 import json
 
-from .outbound_log import log_outbound
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -77,7 +76,6 @@ class SSEPresenceService:
                 try:
                     # Send initial connection event
                     init_data = {'connected': True, 'client_id': client_id}
-                    log_outbound(f"SSE:8764 /events/presence/{client_id} CONNECT", init_data)
                     yield f"data: {json.dumps(init_data)}\n\n"
                     
                     while client_id in self._active_clients:
@@ -89,7 +87,6 @@ class SSEPresenceService:
                                 break
                             
                             # Format as SSE
-                            log_outbound(f"SSE:8764 /events/presence/{client_id} EVENT", event)
                             yield f"data: {json.dumps(event)}\n\n"
                             
                         except asyncio.TimeoutError:
@@ -144,11 +141,9 @@ class SSEPresenceService:
         }
         
         # Send to all connected clients
-        log_outbound("SSE:8764 _handle_presence_event QUEUE", event_data)
         for client_id in list(self._active_clients):
             if client_id in self._client_queues:
                 try:
                     await self._client_queues[client_id].put(event_data)
-                    log_outbound(f"SSE:8764 QUEUED→{client_id}", event_data)
                 except Exception as e:
                     logger.error(f"Error sending event to client {client_id}: {e}")

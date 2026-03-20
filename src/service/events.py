@@ -6,7 +6,6 @@ Provides event-driven architecture for decoupled service communication.
 import json
 import logging
 import asyncio
-import os
 from enum import Enum
 from datetime import datetime
 from dataclasses import dataclass, asdict
@@ -166,15 +165,6 @@ class EventPublisher:
         """Publish event to all synchronous subscribers."""
         import time
         start_time = time.time()
-
-        # Log every event to shared outbound log
-        try:
-            os.makedirs("/tmp/ziggy-webcam", exist_ok=True)
-            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-            with open("/tmp/ziggy-webcam/outbound.log", "a") as f:
-                f.write(f"{ts} [EventPublisher.publish] type={event.event_type.value} data={event.data}\n")
-        except Exception:
-            pass
 
         # Update metrics
         self._metrics['total_events_published'] += 1
