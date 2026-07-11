@@ -31,6 +31,11 @@ class PyraVisionConfig:
     timeout: float = 30.0
     max_retries: int = 2
     max_tokens: int = 64
+    # Per-request backend selection on the vision service:
+    #   "finetuned" — Pyra's fine-tuned LFM2.5-VL (in-process, fast)
+    #   "ollama"    — generalist multimodal model proxied via Ollama
+    backend: str = "finetuned"
+    model: str = None  # ollama model override (service default if None)
 
     def __post_init__(self):
         self.base_url = self.base_url.rstrip("/")
@@ -87,7 +92,13 @@ class PyraVisionClient:
         else:
             image_b64 = image_data
 
-        payload = {"image": image_b64, "max_tokens": self.config.max_tokens}
+        payload = {
+            "image": image_b64,
+            "max_tokens": self.config.max_tokens,
+            "backend": self.config.backend,
+        }
+        if self.config.model:
+            payload["model"] = self.config.model
         if prompt:
             payload["prompt"] = prompt
 
