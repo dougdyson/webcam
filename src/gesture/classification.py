@@ -10,12 +10,15 @@ from typing import List, Any, Dict, Optional
 
 class GestureResult:
     """Result of gesture detection with type and confidence."""
+
+    NO_GESTURE_TYPES = {"", "none", "unknown"}
     
-    def __init__(self, gesture_type: str, confidence: float, position: Optional[Dict] = None):
+    def __init__(self, gesture_type: Optional[str], confidence: float, position: Optional[Dict] = None):
         self.gesture_type = gesture_type
         self.confidence = confidence
         self.position = position or {}
-        self.gesture_detected = gesture_type != "Unknown"  # Updated from "none"
+        normalized_type = str(gesture_type).strip().lower() if gesture_type is not None else ""
+        self.gesture_detected = normalized_type not in self.NO_GESTURE_TYPES and confidence > 0.0
         
         # Updated legacy compatibility for MediaPipe defaults
         self.palm_facing_camera = gesture_type in ["Open_Palm", "Victory"]
@@ -600,14 +603,15 @@ class GestureClassifier:
         # Get detailed finger analysis
         finger_analysis = self._analyze_finger_pattern(hand_landmarks)
         position_info.update(finger_analysis)
+
+        if not is_above_shoulder:
+            return GestureResult("Unknown", 0.0, position_info)
         
         # GESTURE CLASSIFICATION - Enhanced for all 8 MediaPipe gestures
         
         # 1. CLOSED_FIST: No fingers extended
         if finger_analysis["extended_fingers"] == 0:
-            # Closed fist doesn't need palm facing camera or high position
-            confidence = 0.9 if is_above_shoulder else 0.7
-            return GestureResult("Closed_Fist", confidence, position_info)
+            return GestureResult("Closed_Fist", 0.8, position_info)
         
         # 2. POINTING_UP: Only index finger extended
         elif (finger_analysis["extended_fingers"] == 1 and 
@@ -619,15 +623,15 @@ class GestureClassifier:
         # 3. THUMB_UP: Only thumb extended, palm facing AWAY (showing back of hand)
         elif (finger_analysis["extended_fingers"] == 1 and 
               finger_analysis["fingers"]["thumb"] and 
-              not is_palm_facing_camera):
-            confidence = 0.9
+              self._is_thumb_pointing_up(hand_landmarks)):
+            confidence = self._calculate_thumb_direction_confidence(hand_landmarks)
             return GestureResult("Thumb_Up", confidence, position_info)
         
         # 4. THUMB_DOWN: Only thumb extended, palm facing TOWARDS camera (showing palm)
         elif (finger_analysis["extended_fingers"] == 1 and 
               finger_analysis["fingers"]["thumb"] and 
-              is_palm_facing_camera):
-            confidence = 0.8
+              self._is_thumb_pointing_down(hand_landmarks)):
+            confidence = self._calculate_thumb_direction_confidence(hand_landmarks)
             return GestureResult("Thumb_Down", confidence, position_info)
         
         # 5. VICTORY: Index + middle fingers extended
@@ -659,6 +663,31 @@ class GestureClassifier:
         
         # 8. UNKNOWN: No recognized pattern
         return GestureResult("Unknown", 0.0, position_info)
+
+    def _is_thumb_pointing_up(self, hand_landmarks: List[Any]) -> bool:
+        try:
+            thumb_tip = hand_landmarks[4]
+            thumb_ip = hand_landmarks[3]
+            thumb_mcp = hand_landmarks[2]
+            return thumb_tip.y < thumb_ip.y - 0.04 and thumb_tip.y < thumb_mcp.y - 0.06
+        except (IndexError, AttributeError, TypeError):
+            return False
+
+    def _is_thumb_pointing_down(self, hand_landmarks: List[Any]) -> bool:
+        try:
+            thumb_tip = hand_landmarks[4]
+            thumb_ip = hand_landmarks[3]
+            thumb_mcp = hand_landmarks[2]
+            return thumb_tip.y > thumb_ip.y + 0.04 and thumb_tip.y > thumb_mcp.y + 0.06
+        except (IndexError, AttributeError, TypeError):
+            return False
+
+    def _calculate_thumb_direction_confidence(self, hand_landmarks: List[Any]) -> float:
+        try:
+            vertical_delta = abs(hand_landmarks[4].y - hand_landmarks[3].y)
+            return min(0.9, max(0.7, vertical_delta / 0.2))
+        except (IndexError, AttributeError, TypeError):
+            return 0.0
 
     def _analyze_finger_pattern(self, hand_landmarks: List[Any]) -> Dict:
         """

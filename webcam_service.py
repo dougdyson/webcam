@@ -73,6 +73,9 @@ class WebcamService:
     - SSE streaming on port 8766 for gesture events
     - Gesture detection only runs when humans are detected
     """
+
+    NO_GESTURE_TYPES = {"", "none", "unknown"}
+    MIN_PUBLISHABLE_GESTURE_CONFIDENCE = 0.7
     
     def __init__(self):
         # Core components
@@ -269,6 +272,22 @@ class WebcamService:
             self.ollama_config = None
             self.config_manager = None
             self.ollama_image_processor = None
+
+    def _should_publish_gesture(self, gesture_result) -> bool:
+        if not gesture_result or not getattr(gesture_result, "gesture_detected", False):
+            return False
+
+        gesture_type = getattr(gesture_result, "gesture_type", None)
+        normalized_type = str(gesture_type).strip().lower() if gesture_type is not None else ""
+        if normalized_type in self.NO_GESTURE_TYPES:
+            return False
+
+        try:
+            confidence = float(getattr(gesture_result, "confidence", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return False
+
+        return confidence >= self.MIN_PUBLISHABLE_GESTURE_CONFIDENCE
     
     def detection_loop(self):
         """Main detection loop with presence gating and vision verification."""
@@ -341,7 +360,7 @@ class WebcamService:
 
                         gesture_result = self.gesture_detector.detect_gestures(frame, pose_landmarks)
                         
-                        if gesture_result and gesture_result.gesture_detected:
+                        if self._should_publish_gesture(gesture_result):
                             gesture_status = f"{gesture_result.gesture_type}"
                             gesture_confidence = gesture_result.confidence
                             
