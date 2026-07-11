@@ -154,9 +154,33 @@ class WebcamService:
 
             # Vision verification is no longer needed — neural IS the primary detector
             self.vision_verifier = None
+            self._description_service_failed = False
+
+            # Description pipeline: Pyra vision service (fine-tuned LFM2.5-VL,
+            # port 9920, launched via kokoro-tts start_all.sh). PyraVisionClient
+            # is duck-type compatible with OllamaClient, so DescriptionService
+            # takes it unchanged. If the service is unreachable, descriptions
+            # are disabled — presence/gesture detection is unaffected.
             self.description_service = None
             self.ollama_image_processor = None
-            self._description_service_failed = False
+            try:
+                from src.pyra_vision import PyraVisionClient
+                pyra_client = PyraVisionClient()
+                if pyra_client.is_available():
+                    self.ollama_client = pyra_client
+                    self.ollama_image_processor = OllamaImageProcessor()
+                    self.description_service = DescriptionService(
+                        ollama_client=pyra_client,
+                        image_processor=self.ollama_image_processor,
+                        config=DescriptionServiceConfig(
+                            room_layout_context=self._load_room_layout(),
+                        ),
+                    )
+                    logger.info("✓ Description service: PyraVisionClient (pyra vision service :9920)")
+                else:
+                    logger.warning("Pyra vision service not reachable on :9920 — descriptions disabled")
+            except Exception as e:
+                logger.warning(f"Pyra vision wiring failed — descriptions disabled: {e}")
             
             # DISABLED: Initialize enhanced frame processor with BALANCED SETTINGS (prevent false positives but still work)
             # processor_config = EnhancedProcessorConfig(
@@ -186,9 +210,9 @@ class WebcamService:
             self.http_service = HTTPDetectionService(http_config)
             self.http_service.setup_event_integration(self.event_publisher)
             
-            # Description integration disabled - gesture-only mode
-            # if self.description_service:
-            #     self.http_service.setup_description_integration(self.description_service)
+            # Description integration (Pyra vision service backed)
+            if self.description_service:
+                self.http_service.setup_description_integration(self.description_service)
             
             # ENABLED: Initialize SSE service (gesture streaming)
             sse_config = SSEServiceConfig(
