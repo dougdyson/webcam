@@ -207,6 +207,75 @@ class TestDescriptionServiceAsyncProcessing:
         assert result.confidence == 0.9  # Default confidence
         assert result.timestamp is not None
         assert result.processing_time_ms > 0
+
+    @pytest.mark.asyncio
+    async def test_describe_snapshot_uses_prompt_override(self):
+        """Explicit webcam requests should pass the user's visual prompt through."""
+        mock_ollama_client = Mock(spec=OllamaClient)
+        mock_ollama_client.describe_image.return_value = "The label says chickpeas"
+
+        mock_image_processor = Mock(spec=OllamaImageProcessor)
+        mock_image_processor.process_webcam_frame.return_value = "base64_encoded_image"
+
+        service = DescriptionService(
+            ollama_client=mock_ollama_client,
+            image_processor=mock_image_processor,
+        )
+
+        frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+        metadata = SnapshotMetadata(
+            timestamp=datetime.now(),
+            confidence=0.9,
+            human_present=True,
+            detection_source="multimodal",
+        )
+        snapshot = Snapshot(frame=frame, metadata=metadata)
+
+        result = await service.describe_snapshot(
+            snapshot,
+            prompt_override="read the label on this can",
+        )
+
+        mock_ollama_client.describe_image.assert_called_once_with(
+            "base64_encoded_image",
+            prompt="read the label on this can",
+        )
+        assert result.description == "The label says chickpeas"
+
+    @pytest.mark.asyncio
+    async def test_describe_snapshot_prompt_override_bypasses_cache(self):
+        """Prompt overrides can ask different questions about the same frame."""
+        mock_ollama_client = Mock(spec=OllamaClient)
+        mock_ollama_client.describe_image.side_effect = [
+            "A kitchen counter is visible.",
+            "The label says chickpeas.",
+        ]
+
+        mock_image_processor = Mock(spec=OllamaImageProcessor)
+        mock_image_processor.process_webcam_frame.return_value = "base64_encoded_image"
+
+        service = DescriptionService(
+            ollama_client=mock_ollama_client,
+            image_processor=mock_image_processor,
+        )
+
+        frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+        metadata = SnapshotMetadata(
+            timestamp=datetime.now(),
+            confidence=0.9,
+            human_present=True,
+            detection_source="multimodal",
+        )
+        snapshot = Snapshot(frame=frame, metadata=metadata)
+
+        await service.describe_snapshot(snapshot)
+        result = await service.describe_snapshot(
+            snapshot,
+            prompt_override="read the label on this can",
+        )
+
+        assert mock_ollama_client.describe_image.call_count == 2
+        assert result.description == "The label says chickpeas."
         
     @pytest.mark.asyncio
     async def test_describe_snapshot_error_handling_and_timeouts(self):
@@ -481,4 +550,4 @@ class TestDescriptionResult:
 
 # Run the tests to see them fail (RED phase)
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"]) 
+    pytest.main([__file__, "-v"])

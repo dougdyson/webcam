@@ -219,11 +219,12 @@ COLOR REFERENCE FOR IDENTIFICATION:
             config = DescriptionServiceConfig(use_room_context=True)
             prompt = config.get_enhanced_prompt()
             
-            # Should specify clear output format
-            assert "Format your response as:" in prompt
-            assert "Currently:" in prompt
-            assert "Present:" in prompt
-            assert "Location:" in prompt
+            # Should request plain conversational context, not a rigid schema.
+            assert "Format your response as:" not in prompt
+            assert "Currently:" not in prompt
+            assert "Present:" not in prompt
+            assert "Location:" not in prompt
+            assert "1-2 concise sentences" in prompt
                 
         except ImportError:
             pytest.skip("Structured output format not available")
@@ -365,4 +366,4 @@ if __name__ == "__main__":
     for module, result in results.items():
         print(f"{module}: {result}")
     
-    print("\nEnhanced Room System Test Suite Complete!") 
+    print("\nEnhanced Room System Test Suite Complete!")

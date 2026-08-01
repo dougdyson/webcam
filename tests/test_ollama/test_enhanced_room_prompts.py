@@ -93,14 +93,11 @@ class TestEnhancedRoomPrompts:
         
         prompt = config.get_enhanced_prompt()
         
-        # Should contain key prompting elements
-        assert "PEOPLE:" in prompt
-        assert "ACTIVITIES:" in prompt  
-        assert "OBJECTS:" in prompt
-        assert "SPATIAL CONTEXT:" in prompt
-        assert "Currently:" in prompt
-        assert "Present:" in prompt
-        assert "Location:" in prompt
+        # Should keep the prompt simple and conversational.
+        assert "visually useful context for Ziggy" in prompt
+        assert "1-2 concise sentences" in prompt
+        assert "not a source of truth" in prompt
+        assert "structured fields" in prompt
     
     def test_get_enhanced_prompt_with_room_layout_context(self):
         """Should include room layout reference in prompt."""
@@ -132,7 +129,7 @@ COLOR REFERENCE FOR IDENTIFICATION:
         assert "COLOR REFERENCE FOR IDENTIFICATION:" in prompt
         assert "White/cream color" in prompt
         assert "Black leather/fabric" in prompt
-        assert "Use the room layout reference" in prompt
+        assert "use it lightly" in prompt
     
     def test_enhanced_prompt_focuses_on_conversation_context(self):
         """Should focus on conversational AI context rather than generic description."""
@@ -142,12 +139,9 @@ COLOR REFERENCE FOR IDENTIFICATION:
         config = DescriptionServiceConfig(use_room_context=True)
         prompt = config.get_enhanced_prompt()
         
-        # Should focus on conversational elements
-        # Should emphasize conversational elements
-        assert "PEOPLE:" in prompt
-        assert "wearing" in prompt.lower()
-        assert "doing" in prompt.lower()
-        assert "activities" in prompt.lower()
+        assert "Ziggy" in prompt
+        assert "conversational context" in prompt
+        assert "visible activity" in prompt
 
 
 class TestRoomLayoutIntegration:
@@ -479,11 +473,11 @@ class TestPromptStructureAndQuality:
         config = DescriptionServiceConfig(use_room_context=True)
         prompt = config.get_enhanced_prompt()
         
-        # Should have clear section headers
-        assert "PEOPLE:" in prompt
-        assert "ACTIVITIES:" in prompt
-        assert "OBJECTS:" in prompt
-        assert "SPATIAL CONTEXT:" in prompt
+        # Should avoid competing schema-like sections.
+        assert "PEOPLE:" not in prompt
+        assert "ACTIVITIES:" not in prompt
+        assert "OBJECTS:" not in prompt
+        assert "SPATIAL CONTEXT:" not in prompt
     
     def test_prompt_emphasizes_conversational_context(self):
         """Should emphasize elements useful for conversational AI."""
@@ -493,11 +487,9 @@ class TestPromptStructureAndQuality:
         config = DescriptionServiceConfig(use_room_context=True)
         prompt = config.get_enhanced_prompt()
         
-        # Should focus on conversational elements
-        assert "PEOPLE:" in prompt
-        assert "wearing" in prompt.lower()
-        assert "doing" in prompt.lower()
-        assert "activities" in prompt.lower()
+        assert "Ziggy" in prompt
+        assert "conversational context" in prompt
+        assert "visible activity" in prompt
     
     def test_prompt_provides_clear_output_format(self):
         """Should provide clear formatting instructions for AI responses."""
@@ -507,8 +499,9 @@ class TestPromptStructureAndQuality:
         config = DescriptionServiceConfig(use_room_context=True)
         prompt = config.get_enhanced_prompt()
         
-        # Should specify output format clearly
-        assert "Format your response as:" in prompt
-        assert "Currently:" in prompt
-        assert "Present:" in prompt  
-        assert "Location:" in prompt 
+        # Should request plain prose, not a rigid output format.
+        assert "Format your response as:" not in prompt
+        assert "Currently:" not in prompt
+        assert "Present:" not in prompt
+        assert "Location:" not in prompt
+        assert "1-2 concise sentences" in prompt
