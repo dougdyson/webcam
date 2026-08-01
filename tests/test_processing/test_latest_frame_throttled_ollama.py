@@ -135,6 +135,20 @@ class TestLatestFrameWaitForCompletion:
         # Should create exactly 1 new thread (the Ollama processing thread)
         assert new_threads <= 1, f"Thread explosion detected: {new_threads} new threads"
 
+    def test_store_latest_frame_does_not_start_description(self, latest_frame_processor):
+        """Test that the latest frame can be retained for on-demand descriptions."""
+        import numpy as np
+
+        frame = np.full((20, 20, 3), 128, dtype=np.uint8)
+
+        latest_frame_processor.store_latest_frame_for_description(frame)
+        stored = latest_frame_processor.get_latest_frame_for_description()
+
+        assert stored is not None
+        assert np.array_equal(stored, frame)
+        assert stored is not frame
+        assert not latest_frame_processor.is_description_processing()
+
     def test_latest_frame_used_when_ollama_available(self, latest_frame_processor):
         """Test that the latest frame is used when Ollama becomes available."""
         # Create a description service that we can control
@@ -195,12 +209,12 @@ class TestLatestFrameWaitForCompletion:
         mock_service = Mock()
         latest_frame_processor.set_description_service(mock_service)
         assert latest_frame_processor.description_service == mock_service
-            
+
         # Should be able to check if description is processing (initially False)
         assert latest_frame_processor.is_description_processing() == False
-            
+
         # Should be able to process frame with description (returns detection result)
         import numpy as np
         test_frame = np.zeros((480, 640, 3), dtype=np.uint8)
         result = latest_frame_processor.process_frame_with_description(test_frame)
-        assert result is not None  # Should return detection result 
+        assert result is not None  # Should return detection result

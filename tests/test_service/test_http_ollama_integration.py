@@ -160,6 +160,110 @@ class TestHTTPOllamaSuccessfulResponse:
                 assert "cached" in data
                 assert isinstance(data["cached"], bool)
 
+    def test_fresh_description_endpoint_uses_latest_frame_processor(self):
+        """Should generate a fresh description from the already-owned latest frame."""
+        if HTTPDetectionService is None or TestClient is None:
+            pytest.skip("HTTPDetectionService not implemented yet - RED phase")
+
+        config = HTTPServiceConfig(port=8767)
+        service = HTTPDetectionService(config)
+
+        frame = np.zeros((32, 32, 3), dtype=np.uint8)
+        latest_frame_processor = Mock()
+        latest_frame_processor.get_latest_frame_for_description = Mock(
+            return_value=frame
+        )
+        service.setup_latest_frame_integration(latest_frame_processor)
+
+        mock_description_result = MockDescriptionResult(
+            description="Doug is holding up a red mug.",
+            confidence=0.9,
+            timestamp=datetime.now().isoformat(),
+            processing_time_ms=250,
+            cached=False,
+            error=None,
+            success=True,
+        )
+        mock_description_service = Mock()
+        mock_description_service.describe_snapshot = AsyncMock(
+            return_value=mock_description_result
+        )
+        service.setup_description_integration(mock_description_service)
+        service.current_status.human_present = True
+        service.current_status.confidence = 0.78
+
+        with TestClient(service.app) as client:
+            response = client.post("/description/fresh")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "available"
+        assert data["fresh"] is True
+        assert data["description"] == "Doug is holding up a red mug."
+        latest_frame_processor.get_latest_frame_for_description.assert_called_once()
+        mock_description_service.describe_snapshot.assert_awaited_once()
+
+    def test_fresh_description_endpoint_passes_prompt_override(self):
+        """Should pass explicit visual prompts through to the description service."""
+        if HTTPDetectionService is None or TestClient is None:
+            pytest.skip("HTTPDetectionService not implemented yet - RED phase")
+
+        config = HTTPServiceConfig(port=8767)
+        service = HTTPDetectionService(config)
+
+        frame = np.zeros((32, 32, 3), dtype=np.uint8)
+        latest_frame_processor = Mock()
+        latest_frame_processor.get_latest_frame_for_description = Mock(
+            return_value=frame
+        )
+        service.setup_latest_frame_integration(latest_frame_processor)
+
+        mock_description_result = MockDescriptionResult(
+            description="The label says chickpeas.",
+            confidence=0.9,
+            timestamp=datetime.now().isoformat(),
+            processing_time_ms=250,
+            cached=False,
+            error=None,
+            success=True,
+        )
+        mock_description_service = Mock()
+        mock_description_service.describe_snapshot = AsyncMock(
+            return_value=mock_description_result
+        )
+        service.setup_description_integration(mock_description_service)
+
+        with TestClient(service.app) as client:
+            response = client.post(
+                "/description/fresh",
+                json={"prompt": "read the label on this can"},
+            )
+
+        assert response.status_code == 200
+        mock_description_service.describe_snapshot.assert_awaited_once()
+        _, kwargs = mock_description_service.describe_snapshot.await_args
+        assert kwargs["prompt_override"] == "read the label on this can"
+
+    def test_fresh_description_endpoint_reports_no_frame(self):
+        """Should not open a second camera when no latest frame exists."""
+        if HTTPDetectionService is None or TestClient is None:
+            pytest.skip("HTTPDetectionService not implemented yet - RED phase")
+
+        config = HTTPServiceConfig(port=8767)
+        service = HTTPDetectionService(config)
+        latest_frame_processor = Mock()
+        latest_frame_processor.get_latest_frame_for_description = Mock(return_value=None)
+        service.setup_latest_frame_integration(latest_frame_processor)
+        service.setup_description_integration(Mock())
+
+        with TestClient(service.app) as client:
+            response = client.post("/description/fresh")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "no_frame"
+        assert data["description"] is None
+
 
 class TestHTTPOllamaErrorResponse:
     """Test Phase 4.1.3: Error Response Handling Tests (RED PHASE)"""
@@ -274,10 +378,10 @@ class TestHTTPOllamaServiceIntegration:
         """Should start HTTP service successfully with Ollama components integrated."""
         if HTTPDetectionService is None:
             pytest.skip("HTTPDetectionService not implemented yet - RED phase")
-        
+
         config = HTTPServiceConfig(port=8768)  # Different port for testing
         service = HTTPDetectionService(config)
-        
+
         # Should initialize without errors even with Ollama integration
         assert service is not None
-        assert hasattr(service, 'app') 
+        assert hasattr(service, 'app')

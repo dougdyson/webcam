@@ -72,6 +72,18 @@ class LatestFrameProcessor:
         """
         self.description_service = description_service
         logger.info("Description service configured for wait-for-completion processing")
+
+    def store_latest_frame_for_description(self, frame):
+        """Store a copy of the latest frame for on-demand description."""
+        with self.description_processing_lock:
+            self.latest_frame_for_description = frame.copy() if frame is not None else None
+
+    def get_latest_frame_for_description(self):
+        """Return a copy of the latest frame available for description."""
+        with self.description_processing_lock:
+            if self.latest_frame_for_description is None:
+                return None
+            return self.latest_frame_for_description.copy()
     
     def is_description_processing(self):
         """
@@ -100,9 +112,7 @@ class LatestFrameProcessor:
         # Always process detection immediately (real-time, no delays)
         detection_result = self.process_frame(frame)
         
-        # Store latest frame for potential description processing
-        with self.description_processing_lock:
-            self.latest_frame_for_description = frame.copy()
+        self.store_latest_frame_for_description(frame)
         
         # Start Ollama processing only if human detected AND no current processing
         if (self.description_service and 
@@ -162,9 +172,9 @@ class LatestFrameProcessor:
                         logger.debug(f"Wait-for-completion description: {description_result.description[:50]}...")
                 finally:
                     loop.close()
-                    
+
         except Exception as e:
             logger.debug(f"Wait-for-completion description error: {e}")
         finally:
             # Mark processing as complete - allows new requests
-            self._is_processing_description = False 
+            self._is_processing_description = False

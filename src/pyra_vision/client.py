@@ -1,6 +1,6 @@
 """
-Client for the Pyra vision service — the fine-tuned LFM2.5-VL model served
-natively from the pyra repo (scripts/vision_service.py, default port 9920).
+Client for the Pyra vision service - an LFM2.5-VL model served natively from
+the pyra repo (scripts/vision_service.py, default port 9920).
 
 Duck-type compatible with OllamaClient (is_available / describe_image), so it
 drops into DescriptionService unchanged:
@@ -13,6 +13,7 @@ Raises OllamaError on failure so existing error handling applies verbatim.
 """
 import base64
 import logging
+import os
 import time
 from dataclasses import dataclass
 from typing import Union
@@ -32,13 +33,41 @@ class PyraVisionConfig:
     max_retries: int = 2
     max_tokens: int = 64
     # Per-request backend selection on the vision service:
-    #   "finetuned" — Pyra's fine-tuned LFM2.5-VL (in-process, fast)
-    #   "ollama"    — generalist multimodal model proxied via Ollama
+    #   "finetuned" - the in-process LFM2.5-VL model loaded by the service
+    #   "ollama"    - generalist multimodal model proxied via Ollama
     backend: str = "finetuned"
     model: str = None  # ollama model override (service default if None)
 
     def __post_init__(self):
         self.base_url = self.base_url.rstrip("/")
+
+    @classmethod
+    def from_env(cls) -> "PyraVisionConfig":
+        """Build config from environment variables, falling back to defaults."""
+        base_url = os.getenv("ZIGGY_VISION_BASE_URL") or os.getenv(
+            "PYRA_VISION_BASE_URL",
+            cls.base_url,
+        )
+        return cls(
+            base_url=base_url,
+            timeout=float(
+                os.getenv("ZIGGY_VISION_TIMEOUT")
+                or os.getenv("PYRA_VISION_TIMEOUT", cls.timeout)
+            ),
+            max_retries=int(
+                os.getenv("ZIGGY_VISION_MAX_RETRIES")
+                or os.getenv("PYRA_VISION_MAX_RETRIES", cls.max_retries)
+            ),
+            max_tokens=int(
+                os.getenv("ZIGGY_VISION_MAX_TOKENS")
+                or os.getenv("PYRA_VISION_MAX_TOKENS", cls.max_tokens)
+            ),
+            backend=os.getenv("ZIGGY_VISION_BACKEND")
+            or os.getenv("PYRA_VISION_BACKEND", cls.backend),
+            model=os.getenv("ZIGGY_VISION_MODEL")
+            or os.getenv("PYRA_VISION_MODEL")
+            or None,
+        )
 
 
 class PyraVisionClient:
@@ -79,7 +108,7 @@ class PyraVisionClient:
         Args:
             image_data: Image as JPEG/PNG bytes or base64 string
             prompt: Optional prompt override (service default is the
-                    fine-tuned compliance prompt)
+                    service default prompt)
 
         Returns:
             Generated description text

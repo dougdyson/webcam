@@ -95,31 +95,30 @@ class DescriptionServiceConfig:
         if not self.use_room_context:
             return self.default_prompt
         
-        # Build structured prompt
+        # Build a single observation prompt for conversational context.
         prompt_parts = []
         
         # Add room layout if available
         if self.room_layout_context:
             prompt_parts.append(f"ROOM LAYOUT REFERENCE:\n{self.room_layout_context}\n")
         
-        # Main description request
-        prompt_parts.append("Describe what you see in this webcam image.")
-        
-        # Structured sections for comprehensive description
-        prompt_parts.append("\nFocus on these aspects:")
-        prompt_parts.append("- PEOPLE: Who is present? How do they appear? What are they wearing (no colors)?")
-        prompt_parts.append("- ACTIVITIES: What are people doing?")
-        prompt_parts.append("- OBJECTS: What items are visible?")
-        prompt_parts.append("- SPATIAL CONTEXT: Where are things positioned?")
-        
-        # Output format
-        prompt_parts.append('\nFormat your response as: "Currently: [activity]. Present: [people/objects]. Location: [spatial details]."')
+        prompt_parts.append(
+            "Describe the visually useful context for Ziggy in 1-2 concise "
+            "sentences. Mention visible activity, notable objects, and location "
+            "only when they are clear. Treat this as helpful conversational "
+            "context, not a source of truth. Do not use labels, headings, or "
+            "structured fields."
+        )
         
         # Color guidance
         if self.room_layout_context:
-            prompt_parts.append("\nIMPORTANT: Use the room layout reference above for color information. Do NOT guess colors from the image.")
+            prompt_parts.append(
+                "\nIf the room layout reference helps identify the area, use it "
+                "lightly. Do not echo the reference or guess details that are not "
+                "visible."
+            )
         else:
-            prompt_parts.append("\nIMPORTANT: Ignore colors in your description.")
+            prompt_parts.append("\nDo not guess details that are not visible.")
         
         return "\n".join(prompt_parts)
     
@@ -569,7 +568,11 @@ class DescriptionService:
         
         self._publish_event(event)
 
-    async def describe_snapshot(self, snapshot: Snapshot) -> DescriptionResult:
+    async def describe_snapshot(
+        self,
+        snapshot: Snapshot,
+        prompt_override: Optional[str] = None,
+    ) -> DescriptionResult:
         """
         Process snapshot and return description.
         
@@ -588,8 +591,9 @@ class DescriptionService:
         start_time = time.time()
         
         try:
-            # Check cache first for performance
-            if self.config.enable_caching:
+            # Check cache first for performance. Explicit prompt overrides can
+            # ask different questions about the same frame, so bypass cache.
+            if self.config.enable_caching and prompt_override is None:
                 cached_result = self.cache.get(snapshot)
                 if cached_result is not None:
                     logger.debug("Cache hit - returning cached description")
@@ -604,7 +608,11 @@ class DescriptionService:
             
             # Acquire processing semaphore for concurrency control
             async with self._get_processing_semaphore():
-                result = await self._process_snapshot(snapshot, start_time)
+                result = await self._process_snapshot(
+                    snapshot,
+                    start_time,
+                    prompt_override=prompt_override,
+                )
                 
                 # Phase 7.2: Update stress metrics based on result
                 success = (result.error is None)
@@ -612,7 +620,11 @@ class DescriptionService:
                     self._update_stress_metrics(success)
                 
                 # Cache successful results only
-                if self.config.enable_caching and result.error is None:
+                if (
+                    self.config.enable_caching
+                    and prompt_override is None
+                    and result.error is None
+                ):
                     self.cache.put(snapshot, result, self.config.cache_ttl_seconds)
                 
                 # Phase 5.2: Publish appropriate event based on result
@@ -656,7 +668,12 @@ class DescriptionService:
             
             return error_result
     
-    async def _process_snapshot(self, snapshot: Snapshot, start_time: float) -> DescriptionResult:
+    async def _process_snapshot(
+        self,
+        snapshot: Snapshot,
+        start_time: float,
+        prompt_override: Optional[str] = None,
+    ) -> DescriptionResult:
         """Process snapshot with Ollama client and comprehensive error handling."""
         last_error = None
         
@@ -672,8 +689,7 @@ class DescriptionService:
                 # Create wrapper function to handle OllamaTimeoutError in executor
                 def safe_describe_image():
                     try:
-                        # Use enhanced prompt from configuration
-                        enhanced_prompt = self.config.get_enhanced_prompt()
+                        enhanced_prompt = prompt_override or self.config.get_enhanced_prompt()
                         return self.ollama_client.describe_image(base64_image, prompt=enhanced_prompt)
                     except OllamaTimeoutError:
                         # Re-raise as asyncio.TimeoutError so it's caught by the outer handler
@@ -979,4 +995,4 @@ class DescriptionService:
     
     def get_stress_statistics(self) -> Dict[str, Any]:
         """Get stress tracking statistics for monitoring."""
-        return self._stress_metrics.copy() 
+        return self._stress_metrics.copy()

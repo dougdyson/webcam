@@ -12,10 +12,11 @@ from typing import Dict, List, Any, Optional
 from collections import deque
 
 from .events import ServiceEvent, EventType, EventPublisher
+from ..ollama.snapshot_buffer import Snapshot, SnapshotMetadata
 
 # FastAPI imports with graceful fallback
 try:
-    from fastapi import FastAPI, HTTPException
+    from fastapi import Body, FastAPI, HTTPException
     from fastapi.responses import JSONResponse
     from fastapi.middleware.cors import CORSMiddleware
     import uvicorn
@@ -23,6 +24,7 @@ try:
 except ImportError:
     FASTAPI_AVAILABLE = False
     FastAPI = None
+    Body = None
     HTTPException = None
     JSONResponse = None
     CORSMiddleware = None
@@ -112,6 +114,7 @@ class HTTPDetectionService:
         
         # NEW: Description service integration for Phase 4.1
         self._description_service = None
+        self._latest_frame_processor = None
         
         # NEW: Gesture tracking for MediaPipe integration
         self.current_gesture_status = {
@@ -281,6 +284,61 @@ class HTTPDetectionService:
                         "error": str(e)
                     }
                 )
+
+        @self.app.post("/description/fresh")
+        async def post_fresh_description(request: Optional[Dict[str, Any]] = Body(default=None)):
+            """Generate a fresh AI description from the latest owned frame."""
+            if self._description_service is None:
+                raise HTTPException(status_code=503, detail="Description service not available")
+            if self._latest_frame_processor is None:
+                raise HTTPException(status_code=503, detail="Latest frame processor not available")
+
+            try:
+                frame = self._latest_frame_processor.get_latest_frame_for_description()
+                if frame is None:
+                    return JSONResponse(content={
+                        "description": None,
+                        "confidence": 0.0,
+                        "timestamp": None,
+                        "cached": False,
+                        "fresh": False,
+                        "status": "no_frame"
+                    })
+
+                metadata = SnapshotMetadata(
+                    timestamp=datetime.now(),
+                    confidence=float(self.current_status.confidence or 0.0),
+                    human_present=bool(self.current_status.human_present),
+                    detection_source="http_fresh_description",
+                )
+                snapshot = Snapshot(frame=frame, metadata=metadata)
+                prompt = None
+                if isinstance(request, dict):
+                    prompt = (request.get("prompt") or "").strip() or None
+                result = await self._description_service.describe_snapshot(
+                    snapshot,
+                    prompt_override=prompt,
+                )
+
+                response_data = result.to_dict()
+                response_data["status"] = "error" if response_data.get("error") else "available"
+                response_data["fresh"] = True
+                self._record_description_result(response_data)
+                return JSONResponse(content=response_data)
+            except Exception as e:
+                self.logger.error(f"Error generating fresh description: {e}")
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "description": None,
+                        "confidence": 0.0,
+                        "timestamp": None,
+                        "cached": False,
+                        "fresh": False,
+                        "status": "error",
+                        "error": str(e)
+                    }
+                )
         
         # NEW: Gesture endpoints for MediaPipe integration
         @self.app.get("/gesture/latest")
@@ -317,6 +375,11 @@ class HTTPDetectionService:
         """Setup integration with Ollama description service."""
         self._description_service = description_service
         self.logger.info("Description service integrated with HTTP API")
+
+    def setup_latest_frame_integration(self, latest_frame_processor) -> None:
+        """Setup integration with the existing latest-frame processor."""
+        self._latest_frame_processor = latest_frame_processor
+        self.logger.info("Latest frame processor integrated with HTTP API")
     
     @property
     def description_service(self):
@@ -447,6 +510,25 @@ class HTTPDetectionService:
         
         except Exception as e:
             self.logger.error(f"Error handling description event: {e}")
+
+    def _record_description_result(self, data: Dict[str, Any]) -> None:
+        """Update description metrics for direct HTTP-generated descriptions."""
+        self._description_stats['total_descriptions'] += 1
+        if data.get("error"):
+            self._description_stats['failed_descriptions'] += 1
+            return
+
+        self._description_stats['successful_descriptions'] += 1
+        processing_time = data.get('processing_time_ms', 0)
+        if processing_time > 0:
+            total_time = self._description_stats['total_processing_time_ms'] + processing_time
+            total_descriptions = self._description_stats['successful_descriptions']
+            self._description_stats['average_processing_time_ms'] = total_time / total_descriptions
+            self._description_stats['total_processing_time_ms'] = total_time
+        if data.get('cached', False):
+            self._description_stats['cache_hits'] += 1
+        else:
+            self._description_stats['cache_misses'] += 1
     
     async def start_server(self) -> None:
         """Start the HTTP server."""
@@ -545,4 +627,4 @@ class HTTPDetectionService:
                 "port": self.config.port,
                 "history_enabled": self.config.enable_history
             }
-        } 
+        }

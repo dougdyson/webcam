@@ -156,16 +156,16 @@ class WebcamService:
             self.vision_verifier = None
             self._description_service_failed = False
 
-            # Description pipeline: Pyra vision service (fine-tuned LFM2.5-VL,
-            # port 9920, launched via kokoro-tts start_all.sh). PyraVisionClient
-            # is duck-type compatible with OllamaClient, so DescriptionService
+            # Description pipeline: Pyra vision service. PyraVisionClient is
+            # duck-type compatible with OllamaClient, so DescriptionService
             # takes it unchanged. If the service is unreachable, descriptions
             # are disabled — presence/gesture detection is unaffected.
             self.description_service = None
             self.ollama_image_processor = None
             try:
-                from src.pyra_vision import PyraVisionClient
-                pyra_client = PyraVisionClient()
+                from src.pyra_vision import PyraVisionClient, PyraVisionConfig
+                pyra_config = PyraVisionConfig.from_env()
+                pyra_client = PyraVisionClient(pyra_config)
                 if pyra_client.is_available():
                     self.ollama_client = pyra_client
                     self.ollama_image_processor = OllamaImageProcessor()
@@ -176,9 +176,9 @@ class WebcamService:
                             room_layout_context=self._load_room_layout(),
                         ),
                     )
-                    logger.info("✓ Description service: PyraVisionClient (pyra vision service :9920)")
+                    logger.info(f"✓ Description service: PyraVisionClient ({pyra_config.base_url})")
                 else:
-                    logger.warning("Pyra vision service not reachable on :9920 — descriptions disabled")
+                    logger.warning(f"Pyra vision service not reachable at {pyra_config.base_url} — descriptions disabled")
             except Exception as e:
                 logger.warning(f"Pyra vision wiring failed — descriptions disabled: {e}")
             
@@ -209,6 +209,7 @@ class WebcamService:
             )
             self.http_service = HTTPDetectionService(http_config)
             self.http_service.setup_event_integration(self.event_publisher)
+            self.http_service.setup_latest_frame_integration(self.latest_frame_processor)
             
             # Description integration (Pyra vision service backed)
             if self.description_service:
@@ -338,6 +339,8 @@ class WebcamService:
                 # Get frame from camera
                 frame = self.camera.get_frame()
                 if frame is not None:
+                    self.latest_frame_processor.store_latest_frame_for_description(frame)
+
                     # Simple detection processing - Ollama disabled for gesture-only mode
                     human_result = self.latest_frame_processor.process_frame(frame)
 
